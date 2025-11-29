@@ -1,6 +1,31 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
   <head>
+    <!-- CRITICAL: Error Suppression Script must be first -->
+    <script>
+      // Global error handler to suppress extension-related conflicts
+      window.onerror = function(message, source, lineno, colno, error) {
+        const msg = String(message);
+        // Suppress "Cannot redefine property" errors commonly caused by wallet extensions (MetaMask/Rabby/Phantom)
+        if (msg.includes('redefine property') || msg.includes('ethereum') || msg.includes('evmAsk')) {
+          console.warn('Supressed browser extension conflict error.');
+          return true; // Prevents the error from firing and stopping execution
+        }
+      };
+
+      // Defensive shim: Ensure window.ethereum exists and is configurable if not already defined
+      // This helps satisfy some extensions that expect it to be present
+      try {
+        if (!window.ethereum) {
+          // Define it as a simple object that can be overwritten (configurable: true)
+          window.ethereum = {}; 
+        }
+      } catch (e) {
+        // If this fails, an extension likely already locked it down.
+        console.debug('Ethereum object already defined/locked.');
+      }
+    </script>
+
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>CryptoInsight - 区块链行情查询</title>
@@ -17,31 +42,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Defensive script for Wallet Extensions -->
-    <script>
-      // Prevent "Cannot redefine property: ethereum" error from conflicting wallet extensions
-      try {
-        if (!window.ethereum) {
-          Object.defineProperty(window, 'ethereum', {
-            value: undefined,
-            writable: true,
-            configurable: true
-          });
-        }
-      } catch (e) {
-        console.warn('CryptoInsight: Wallet injection mitigation active.');
-      }
-      
-      // Prevent resize observer loop errors from showing up
-      window.addEventListener('error', function(e) {
-        if (e.message === 'ResizeObserver loop limit exceeded' || 
-            e.message.includes('Cannot redefine property: ethereum')) {
-          e.stopImmediatePropagation();
-          return false;
-        }
-      });
-    </script>
-
     <script>
       tailwind.config = {
         theme: {
