@@ -76,8 +76,21 @@ export const translations = {
     fear: "Fear",
     greed: "Greed",
     extremeGreed: "Extreme Greed",
+    theme: "Theme Mode",
+    refresh: "Refresh Data",
+    
+    // Profit Calculator
+    calcTitle: "Profit Calculator",
+    calcPrincipal: "Principal ($)",
+    calcBuyPrice: "Buy Price ($)",
+    calcSellPrice: "Sell Price ($)",
+    calcUseCurrent: "Current",
+    calcUseTarget: "Target",
+    calcProfit: "Profit",
+    calcRoi: "ROI",
     
     // Categories
+    catFav: "My Watchlist",
     catAll: "All",
     catEth: "Ethereum",
     catSol: "Solana",
@@ -175,8 +188,21 @@ export const translations = {
     fear: "恐慌",
     greed: "贪婪",
     extremeGreed: "极度贪婪",
+    theme: "显示模式",
+    refresh: "刷新数据",
+
+    // Profit Calculator
+    calcTitle: "投资回报模拟器",
+    calcPrincipal: "投入本金 ($)",
+    calcBuyPrice: "买入价格 ($)",
+    calcSellPrice: "卖出价格 ($)",
+    calcUseCurrent: "使用现价",
+    calcUseTarget: "使用目标价",
+    calcProfit: "预计收益",
+    calcRoi: "回报率",
 
     // Categories
+    catFav: "我的自选",
     catAll: "综合",
     catEth: "以太坊生态",
     catSol: "Solana 生态",

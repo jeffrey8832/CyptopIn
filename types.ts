@@ -80,3 +80,6 @@ export interface TechnicalAnalysis {
     stop: string;
   };
 }
+
+// Added 'fav'
+export type Category = 'fav' | 'all' | 'eth' | 'sol' | 'bsc' | 'arb';

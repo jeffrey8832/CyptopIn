@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-CN">
   <head>
@@ -44,6 +45,7 @@
     
     <script>
       tailwind.config = {
+        darkMode: 'class', // Enable class based dark mode
         theme: {
           extend: {
             fontFamily: {
@@ -79,8 +81,8 @@
     </script>
     <style>
       body {
+        /* Default base styles are handled by React app, but set a fallback background */
         background-color: #0f172a;
-        color: #f8fafc;
         /* Prevent pull-to-refresh on mobile which looks weird in standalone mode */
         overscroll-behavior-y: none;
       }
@@ -90,14 +92,14 @@
         height: 6px;
       }
       ::-webkit-scrollbar-track {
-        background: #0f172a;
+        background: transparent;
       }
       ::-webkit-scrollbar-thumb {
-        background: #334155;
+        background: #94a3b8; /* Slate 400 */
         border-radius: 3px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #475569;
+        background: #64748b; /* Slate 500 */
       }
       .custom-scrollbar::-webkit-scrollbar {
         width: 4px;
