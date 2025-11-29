@@ -8,7 +8,7 @@ import PriceChart from './components/PriceChart';
 import { 
   Search, Activity, PieChart, ArrowUpRight, ArrowDownRight, AlertCircle, Loader2, 
   Coins, Zap, Target, BarChart2, Newspaper, BrainCircuit, Lightbulb, Copy, Check, Globe,
-  Settings, Save, Gauge, Star, TrendingUp, Droplets, Layers, ChevronRight, BarChart, Smartphone
+  Settings, Save, Gauge, Star, TrendingUp, Droplets, Layers, ChevronRight, BarChart, Smartphone, Link
 } from 'lucide-react';
 
 type ViewMode = 'dashboard' | 'analysis';
@@ -20,8 +20,14 @@ const App: React.FC = () => {
 
   const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
   const [showSettings, setShowSettings] = useState(false);
-  // Initialize from localStorage directly to avoid flicker/reset on reload
-  const [apiKeyInput, setApiKeyInput] = useState(() => localStorage.getItem('coingecko_api_key') || '');
+  // Initialize from localStorage directly to avoid flicker/reset on reload, with try-catch
+  const [apiKeyInput, setApiKeyInput] = useState(() => {
+    try {
+      return localStorage.getItem('coingecko_api_key') || '';
+    } catch {
+      return '';
+    }
+  });
   const [saveStatus, setSaveStatus] = useState(false);
   
   // Favorites State
@@ -54,6 +60,10 @@ const App: React.FC = () => {
   
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Determine current URL for QR Code
+  const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
+  const isLocalhost = currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1');
 
   // Initialize Data
   useEffect(() => {
@@ -128,7 +138,11 @@ const App: React.FC = () => {
       newFavs = [...favorites, coinId];
     }
     setFavorites(newFavs);
-    localStorage.setItem('favorites', JSON.stringify(newFavs));
+    try {
+      localStorage.setItem('favorites', JSON.stringify(newFavs));
+    } catch (e) {
+      console.warn("Failed to save favorites to localStorage", e);
+    }
   };
 
   const loadSpecificCoin = async (id: string, switchToAnalysis: boolean = true) => {
@@ -363,10 +377,22 @@ const App: React.FC = () => {
                {/* Mobile QR Section */}
                <div className="mt-4 pt-4 border-t border-slate-700">
                  <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2"><Smartphone className="w-4 h-4 text-indigo-400"/> {t.mobileAccess}</label>
-                 <div className="flex items-center gap-4 bg-slate-950/50 p-3 rounded-lg border border-slate-800">
-                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}&color=22d3ee&bgcolor=0f172a`} alt="QR Code" className="w-20 h-20 rounded-lg border border-slate-700 p-1 bg-slate-900" />
-                    <div className="text-xs text-slate-400 flex-1">
+                 <div className="flex items-start gap-4 bg-slate-950/50 p-3 rounded-lg border border-slate-800">
+                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(currentUrl)}&color=22d3ee&bgcolor=0f172a`} alt="QR Code" className="w-20 h-20 rounded-lg border border-slate-700 p-1 bg-slate-900 flex-shrink-0" />
+                    <div className="text-xs text-slate-400 flex-1 space-y-2">
                       <p className="leading-relaxed">{t.mobileDesc}</p>
+                      
+                      {isLocalhost && (
+                        <div className="bg-yellow-900/20 border border-yellow-900/50 p-2 rounded text-yellow-500 flex items-start gap-2">
+                           <AlertCircle size={14} className="mt-0.5 flex-shrink-0"/>
+                           <span>Phone cannot scan <b>localhost</b>. Use your PC's Network IP (e.g. 192.168.x.x) or a deploy URL.</span>
+                        </div>
+                      )}
+                      
+                      <div className="bg-slate-900 p-2 rounded border border-slate-800 flex items-center gap-2 break-all">
+                        <Link size={12} className="flex-shrink-0"/>
+                        <span className="text-slate-500 select-all">{currentUrl}</span>
+                      </div>
                     </div>
                  </div>
                </div>

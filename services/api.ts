@@ -7,17 +7,25 @@ const BASE_URL = 'https://api.coingecko.com/api/v3';
 // Initialize directly from localStorage if available to ensure persistence across reloads
 let COINGECKO_API_KEY = '';
 if (typeof window !== 'undefined') {
-  COINGECKO_API_KEY = localStorage.getItem('coingecko_api_key') || '';
+  try {
+    COINGECKO_API_KEY = localStorage.getItem('coingecko_api_key') || '';
+  } catch (e) {
+    console.warn('LocalStorage access denied', e);
+  }
 }
 
 export const setApiKey = (key: string) => {
   COINGECKO_API_KEY = key;
   // Also update localStorage here to keep them in sync via the service
   if (typeof window !== 'undefined') {
-      if (key) {
-          localStorage.setItem('coingecko_api_key', key);
-      } else {
-          localStorage.removeItem('coingecko_api_key');
+      try {
+        if (key) {
+            localStorage.setItem('coingecko_api_key', key);
+        } else {
+            localStorage.removeItem('coingecko_api_key');
+        }
+      } catch (e) {
+        console.warn('LocalStorage write failed', e);
       }
   }
   cache.clear();

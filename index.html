@@ -16,6 +16,32 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Defensive script for Wallet Extensions -->
+    <script>
+      // Prevent "Cannot redefine property: ethereum" error from conflicting wallet extensions
+      try {
+        if (!window.ethereum) {
+          Object.defineProperty(window, 'ethereum', {
+            value: undefined,
+            writable: true,
+            configurable: true
+          });
+        }
+      } catch (e) {
+        console.warn('CryptoInsight: Wallet injection mitigation active.');
+      }
+      
+      // Prevent resize observer loop errors from showing up
+      window.addEventListener('error', function(e) {
+        if (e.message === 'ResizeObserver loop limit exceeded' || 
+            e.message.includes('Cannot redefine property: ethereum')) {
+          e.stopImmediatePropagation();
+          return false;
+        }
+      });
+    </script>
+
     <script>
       tailwind.config = {
         theme: {
