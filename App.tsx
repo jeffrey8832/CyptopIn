@@ -1,17 +1,709 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { fetchGlobalData, fetchCoinData, fetchCoinHistory, fetchNews, findCoinId, fetchTrendingCoins, setApiKey, fetchFearAndGreed, fetchCoinsMarketData, fetchMarketNews } from './services/api';
-import { GlobalData, CoinDetail, ChartDataPoint, NewsItem, Language, FearGreedData, IndicatorMetric, TechnicalAnalysis, Category } from './types';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { fetchGlobalData, fetchCoinData, fetchCoinHistory, findCoinId, fetchTrendingCoins, fetchFearAndGreed, fetchCoinsMarketData, fetchOnChainData, fetchEVMAssets } from './services/api';
+import { GlobalData, CoinDetail, ChartDataPoint, Language, FearGreedData, IndicatorMetric, TechnicalAnalysis, Category, OnChainData, PortfolioItem } from './types';
 import { analyzeToken } from './utils/indicators';
 import { translations } from './utils/translations';
 import PriceChart from './components/PriceChart';
 import { 
   Search, Activity, PieChart, ArrowUpRight, ArrowDownRight, AlertCircle, Loader2, 
-  Coins, Zap, Target, BarChart2, Newspaper, BrainCircuit, Lightbulb, Copy, Check, Globe,
-  Settings, Save, Gauge, Star, TrendingUp, Droplets, Layers, ChevronRight, BarChart, Smartphone, Link, Sun, Moon, RefreshCw, Calculator, Clock, ImageOff
+  Coins, Zap, Target, BarChart2, BrainCircuit, Lightbulb, Copy, Check, Globe,
+  Settings, Gauge, Star, TrendingUp, Droplets, Layers, BarChart, Sun, Moon, RefreshCw, Calculator, ArrowRightLeft, Lock, Anchor, Wallet, Plus, Trash2, Edit2, X, Download, LayoutGrid, Gem, Hexagon
 } from 'lucide-react';
+import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip } from 'recharts';
 
-type ViewMode = 'dashboard' | 'analysis' | 'news';
+// Add declaration for window.ethereum
+declare global {
+  interface Window {
+    ethereum: any;
+  }
+}
+
+type ViewMode = 'dashboard' | 'analysis' | 'tools' | 'portfolio';
+
+// --- Standalone Components ---
+
+const CoinOverviewCard: React.FC<{ coin: CoinDetail, onClick: (id: string) => void, formatPrice: (n: number) => string }> = React.memo(({ coin, onClick, formatPrice }) => (
+  <div 
+    onClick={() => onClick(coin.id)}
+    className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/80 hover:border-indigo-500/50 p-5 rounded-2xl cursor-pointer transition-all hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between group shadow-sm hover:shadow-indigo-500/10"
+  >
+    <div className="flex items-center gap-4">
+      <img src={coin.image} alt={coin.name} className="w-10 h-10 rounded-full shadow-lg" />
+      <div>
+        <div className="font-bold text-lg text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+          {coin.symbol.toUpperCase()}
+        </div>
+        <div className="text-xs text-slate-500 dark:text-slate-500 font-medium">{coin.name}</div>
+      </div>
+    </div>
+    <div className="text-right">
+      <div className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+        {formatPrice(coin.current_price)}
+      </div>
+      <div className={`flex items-center justify-end gap-1 text-xs font-semibold mt-1 ${coin.price_change_percentage_24h >= 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>
+        {coin.price_change_percentage_24h >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+        {Math.abs(coin.price_change_percentage_24h).toFixed(2)}%
+      </div>
+    </div>
+  </div>
+));
+
+const IndicatorCard: React.FC<{ icon: React.ReactNode, label: string, metric: IndicatorMetric | undefined }> = ({ icon, label, metric }) => {
+  if (!metric) return <div className="h-24 bg-slate-200 dark:bg-slate-800/50 rounded-xl animate-pulse"></div>;
+  
+  let statusColor = "text-slate-600 dark:text-slate-300";
+  let statusBg = "bg-slate-100 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600";
+  const s = metric.status;
+  
+  // Adjusted matching logic for both English and Chinese status strings
+  if (s.includes('Strong') || s.includes('增强') || s.includes('Bullish') || s.includes('偏强') || s.includes('Buy') || s.includes('多头') || s.includes('金叉') || s.includes('合理') || s.includes('Fair') || s.includes('Greed') || s.includes('Golden')) {
+    statusColor = "text-emerald-600 dark:text-emerald-400";
+    statusBg = "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20";
+  } else if (s.includes('Weak') || s.includes('转弱') || s.includes('Bearish') || s.includes('偏弱') || s.includes('Sell') || s.includes('空头') || s.includes('恐慌') || s.includes('Fear') || s.includes('Death')) {
+    statusColor = "text-rose-600 dark:text-rose-400";
+    statusBg = "bg-rose-50 dark:bg-rose-500/10 border-rose-200 dark:border-rose-500/20";
+  }
+
+  return (
+    <div className="bg-white dark:bg-slate-900/40 p-3 rounded-xl border border-slate-200 dark:border-slate-800/50 hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col gap-2 shadow-sm">
+       <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
+             {icon}
+             {label}
+          </div>
+          <div className={`px-2 py-0.5 rounded text-xs font-bold border ${statusBg} ${statusColor}`}>
+             {metric.status}
+          </div>
+       </div>
+       <p className="text-xs text-slate-600 dark:text-slate-500 leading-relaxed line-clamp-2">{metric.desc}</p>
+    </div>
+  );
+};
+
+const ProfitCalculator: React.FC<{ t: any }> = ({ t }) => {
+    const [principal, setPrincipal] = useState<string>('1000');
+    const [buyPrice, setBuyPrice] = useState<string>('');
+    const [sellPrice, setSellPrice] = useState<string>('');
+
+    const p = parseFloat(principal) || 0;
+    const b = parseFloat(buyPrice) || 0;
+    const s = parseFloat(sellPrice) || 0;
+
+    let profit = 0;
+    let roi = 0;
+
+    if (b > 0 && p > 0 && s > 0) {
+        const amount = p / b;
+        const totalValue = amount * s;
+        profit = totalValue - p;
+        roi = (profit / p) * 100;
+    }
+
+    return (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-md transition-colors relative overflow-hidden h-full">
+             <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 dark:bg-indigo-500/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
+             
+             <h3 className="text-lg font-bold text-indigo-500 dark:text-indigo-400 mb-6 flex items-center gap-2 relative z-10">
+                 <Calculator className="w-5 h-5" /> {t.calcTitle}
+             </h3>
+
+             <div className="space-y-6 relative z-10">
+                 <div className="space-y-4">
+                     <div>
+                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{t.calcPrincipal}</label>
+                         <input type="number" value={principal} onChange={e => setPrincipal(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm" placeholder="1000" />
+                     </div>
+                     <div className="grid grid-cols-2 gap-4">
+                         <div>
+                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{t.calcBuyPrice}</label>
+                             <input type="number" value={buyPrice} onChange={e => setBuyPrice(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm" placeholder="0.00" />
+                         </div>
+                         <div>
+                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{t.calcSellPrice}</label>
+                             <input type="number" value={sellPrice} onChange={e => setSellPrice(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm" placeholder="0.00" />
+                         </div>
+                     </div>
+                 </div>
+
+                 <div className="bg-slate-50 dark:bg-slate-800/30 rounded-xl p-4 flex flex-col justify-center gap-4 border border-slate-100 dark:border-slate-800/50">
+                     <div className="grid grid-cols-2 gap-4">
+                         <div>
+                             <div className="text-xs text-slate-500 mb-1">{t.calcProfit}</div>
+                             <div className={`text-xl font-bold ${profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                 {profit >= 0 ? '+' : ''}{profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs text-slate-400">USD</span>
+                             </div>
+                         </div>
+                         <div>
+                             <div className="text-xs text-slate-500 mb-1">{t.calcRoi}</div>
+                             <div className={`text-xl font-bold ${roi >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                 {roi >= 0 ? '+' : ''}{roi.toFixed(2)}%
+                             </div>
+                         </div>
+                     </div>
+                     <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div className={`h-full transition-all duration-500 ${roi >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`} 
+                             style={{ 
+                                 width: `${Math.min(Math.abs(roi), 100)}%`, 
+                                 marginLeft: roi < 0 ? 'auto' : '0'
+                             }}>
+                        </div>
+                     </div>
+                 </div>
+             </div>
+        </div>
+    );
+};
+
+const CryptoConverter: React.FC<{ coins: CoinDetail[], t: any, formatPrice: (n: number) => string }> = ({ coins, t, formatPrice }) => {
+    const [amount, setAmount] = useState('1');
+    const [fromCoinId, setFromCoinId] = useState<string>('bitcoin');
+    const [toCoinId, setToCoinId] = useState<string>('tether');
+    
+    const fromCoin = coins.find(c => c.id === fromCoinId);
+    const toCoin = coins.find(c => c.id === toCoinId);
+    
+    const val = parseFloat(amount) || 0;
+    let result = 0;
+    
+    if (fromCoin && toCoin) {
+        result = (val * fromCoin.current_price) / toCoin.current_price;
+    }
+
+    const swap = () => {
+        setFromCoinId(toCoinId);
+        setToCoinId(fromCoinId);
+    };
+
+    return (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-md overflow-hidden relative h-full">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+            
+            <div className="p-6">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
+                    <ArrowRightLeft className="w-5 h-5 text-indigo-500"/>
+                    {t.converterTitle}
+                </h2>
+
+                <div className="space-y-4">
+                    {/* From Card */}
+                    <div className="bg-slate-50 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                            <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">{t.convFrom}</label>
+                            <div className="flex gap-4 items-center">
+                                <div className="flex-1">
+                                    <input 
+                                    type="number" 
+                                    value={amount}
+                                    onChange={e => setAmount(e.target.value)}
+                                    className="w-full bg-transparent text-2xl font-bold text-slate-900 dark:text-white focus:outline-none placeholder-slate-300"
+                                    placeholder="0"
+                                    />
+                                </div>
+                                <div className="w-1/3 min-w-[100px]">
+                                    <select 
+                                    value={fromCoinId} 
+                                    onChange={e => setFromCoinId(e.target.value)}
+                                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-sm font-semibold text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-500"
+                                    >
+                                    {coins.map(c => <option key={c.id} value={c.id}>{c.symbol.toUpperCase()}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="text-xs text-slate-400 mt-2">
+                            1 {fromCoin?.symbol.toUpperCase()} ≈ {formatPrice(fromCoin?.current_price || 0)}
+                            </div>
+                    </div>
+
+                    {/* Swap Button */}
+                    <div className="flex justify-center -my-2 relative z-10">
+                        <button onClick={swap} className="bg-indigo-500 hover:bg-indigo-600 text-white p-2 rounded-full shadow-lg transition-transform hover:scale-110">
+                            <ArrowRightLeft className="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    {/* To Card */}
+                    <div className="bg-slate-50 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                            <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">{t.convTo}</label>
+                            <div className="flex gap-4 items-center">
+                                <div className="flex-1">
+                                    <div className="text-2xl font-bold text-indigo-500 dark:text-indigo-400 truncate">
+                                        {result > 0 ? (result < 0.0001 ? result.toExponential(4) : result.toLocaleString(undefined, {maximumFractionDigits: 6})) : '0'}
+                                    </div>
+                                </div>
+                                <div className="w-1/3 min-w-[100px]">
+                                    <select 
+                                    value={toCoinId} 
+                                    onChange={e => setToCoinId(e.target.value)}
+                                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-sm font-semibold text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-500"
+                                    >
+                                    {coins.map(c => <option key={c.id} value={c.id}>{c.symbol.toUpperCase()}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="text-xs text-slate-400 mt-2">
+                            1 {toCoin?.symbol.toUpperCase()} ≈ {formatPrice(toCoin?.current_price || 0)}
+                            </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const OnChainView: React.FC<{ coin: CoinDetail, t: any, formatPrice: (n: number) => string }> = ({ coin, t, formatPrice }) => {
+  const onChainData = fetchOnChainData(coin);
+
+  return (
+    <div className="space-y-6 animate-fade-in-up w-full mt-8">
+       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 relative overflow-hidden shadow-lg">
+          <div className="absolute top-0 right-0 p-6 opacity-5"><Layers size={120} /></div>
+          <div className="flex items-center gap-4 relative z-10 mb-6">
+              <div className="p-3 bg-cyan-100 dark:bg-cyan-900/50 rounded-full text-cyan-600 dark:text-cyan-400"><Layers size={24}/></div>
+              <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">{t.ocTitle}</h2>
+                  <p className="text-slate-500 text-xs">{t.ocDataDesc}</p>
+              </div>
+          </div>
+          
+          <div className="grid md:grid-cols-2 gap-6">
+             {/* Unlocks Card */}
+             <div className="bg-slate-50 dark:bg-slate-950/50 rounded-xl p-5 border border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2 mb-4 text-indigo-500 font-bold"><Lock size={18}/> {t.ocUnlocks}</div>
+                
+                <div className="space-y-4">
+                    <div>
+                        <div className="flex justify-between text-xs text-slate-500 mb-1">
+                            <span>{t.ocCirculating}</span>
+                            <span className="text-slate-900 dark:text-white font-mono">{coin.circulating_supply?.toLocaleString()}</span>
+                        </div>
+                        <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${onChainData.unlockProgress}%` }}></div>
+                        </div>
+                        <div className="flex justify-between text-xs mt-1 font-bold">
+                            <span className="text-indigo-500">{onChainData.unlockProgress.toFixed(1)}% Unlocked</span>
+                            <span className="text-slate-400">{onChainData.lockedPercent.toFixed(1)}% {t.ocLocked}</span>
+                        </div>
+                    </div>
+                    
+                    <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
+                        <div className="flex justify-between items-center">
+                             <span className="text-xs text-slate-500">{t.ocFdvGap}</span>
+                             <span className="text-sm font-bold text-slate-900 dark:text-white">x{onChainData.fdvGap.toFixed(2)}</span>
+                        </div>
+                    </div>
+                </div>
+             </div>
+
+             {/* Whale Radar */}
+             <div className="bg-slate-50 dark:bg-slate-950/50 rounded-xl p-5 border border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2 mb-4 text-cyan-500 font-bold"><Anchor size={18}/> {t.ocWhaleRadar}</div>
+                <div className="flex items-center justify-center py-2">
+                    <div className="relative w-32 h-32 flex items-center justify-center">
+                        <div className="absolute inset-0 rounded-full border-2 border-cyan-500/20 animate-ping"></div>
+                        <div className="absolute inset-4 rounded-full border-2 border-cyan-500/40"></div>
+                        <div className="absolute inset-8 rounded-full border-2 border-cyan-500/60"></div>
+                        <div className="relative z-10 text-center">
+                            <div className="text-2xl font-bold text-cyan-500">{onChainData.whaleActivity}</div>
+                            <div className="text-[10px] text-slate-500">{t.ocActivityLevel}</div>
+                        </div>
+                    </div>
+                </div>
+             </div>
+
+             {/* Net Flow */}
+             <div className="bg-slate-50 dark:bg-slate-950/50 rounded-xl p-5 border border-slate-200 dark:border-slate-800">
+                 <div className="flex items-center gap-2 mb-4 text-emerald-500 font-bold"><ArrowRightLeft size={18}/> {t.ocExchangeFlow}</div>
+                 <div className="h-32 flex items-end justify-center gap-2">
+                     {[1,2,3,4,5,6,7].map(i => {
+                         const height = Math.random() * 80 + 20;
+                         const isPos = Math.random() > 0.4;
+                         return (
+                             <div key={i} className={`w-4 rounded-t-sm ${isPos ? 'bg-emerald-500/80' : 'bg-rose-500/80'}`} style={{ height: `${height}%` }}></div>
+                         )
+                     })}
+                 </div>
+                 <div className="flex justify-between text-xs mt-3 font-bold px-4">
+                     <span className="text-emerald-500">{t.ocInflow}</span>
+                     <span className="text-rose-500">{t.ocOutflow}</span>
+                 </div>
+             </div>
+
+             {/* Holders */}
+             <div className="bg-slate-50 dark:bg-slate-950/50 rounded-xl p-5 border border-slate-200 dark:border-slate-800">
+                 <div className="flex items-center gap-2 mb-4 text-orange-500 font-bold"><Wallet size={18}/> {t.ocHolders}</div>
+                 <div className="text-center py-6">
+                     <div className="text-3xl font-bold text-slate-900 dark:text-white">{onChainData.holders.toLocaleString()}</div>
+                     <div className="text-xs text-slate-500 mt-1">{t.ocActiveAddr}</div>
+                 </div>
+             </div>
+          </div>
+       </div>
+    </div>
+  );
+};
+
+const PortfolioView: React.FC<{ coins: CoinDetail[], t: any, formatPrice: (n: number) => string }> = ({ coins, t, formatPrice }) => {
+  const [items, setItems] = useState<PortfolioItem[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('portfolioItems') || '[]');
+    } catch { return []; }
+  });
+  
+  // Wallet State
+  const [walletAddress, setWalletAddress] = useState<string>(() => localStorage.getItem('walletAddress') || '');
+  const [walletItems, setWalletItems] = useState<PortfolioItem[]>(() => {
+      try {
+          return JSON.parse(localStorage.getItem('walletItems') || '[]');
+      } catch { return []; }
+  });
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  // Manual Add Modal State
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingItem, setEditingItem] = useState<PortfolioItem | null>(null);
+  const [search, setSearch] = useState('');
+  const [amount, setAmount] = useState('');
+  const [buyPrice, setBuyPrice] = useState('');
+  const [selectedCoinId, setSelectedCoinId] = useState<string>('bitcoin');
+
+  useEffect(() => {
+     localStorage.setItem('portfolioItems', JSON.stringify(items));
+  }, [items]);
+
+  useEffect(() => {
+     localStorage.setItem('walletItems', JSON.stringify(walletItems));
+     localStorage.setItem('walletAddress', walletAddress);
+  }, [walletItems, walletAddress]);
+
+  // Connect Wallet Logic
+  const connectWallet = async () => {
+    setIsConnecting(true);
+    try {
+      if (!window.ethereum) {
+        alert("Please install MetaMask or another Web3 wallet.");
+        return;
+      }
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      if (accounts && accounts.length > 0) {
+        setWalletAddress(accounts[0]);
+        await fetchWalletAssets(accounts[0]);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const importAddress = async () => {
+     if (!walletAddress) return;
+     setIsConnecting(true);
+     await fetchWalletAssets(walletAddress);
+     setIsConnecting(false);
+  };
+
+  const fetchWalletAssets = async (address: string) => {
+      const assets = await fetchEVMAssets(address);
+      
+      const newWalletItems: PortfolioItem[] = [];
+      const symbolToIdMap: Record<string, string> = {};
+      const idsToFetch: string[] = [];
+      
+      for (const asset of assets) {
+          const foundId = await findCoinId(asset.symbol); // Re-using existing fuzzy finder
+          if (foundId) {
+             symbolToIdMap[asset.symbol] = foundId;
+             if (!idsToFetch.includes(foundId)) idsToFetch.push(foundId);
+          }
+      }
+      
+      const marketData = await fetchCoinsMarketData(idsToFetch);
+      
+      for (const asset of assets) {
+          const id = symbolToIdMap[asset.symbol];
+          const coin = marketData.find(c => c.id === id);
+          
+          if (coin) {
+              newWalletItems.push({
+                  id: `wallet-${asset.symbol}`,
+                  coinId: coin.id,
+                  symbol: coin.symbol,
+                  name: coin.name,
+                  image: coin.image,
+                  amount: asset.balance,
+                  avgBuyPrice: 0, // Wallet doesn't know buy price
+                  source: 'wallet',
+                  priceChange24h: coin.price_change_percentage_24h
+              });
+          }
+      }
+      
+      setWalletItems(newWalletItems);
+  };
+
+  // Merge items for calculation
+  const allItems = [...items, ...walletItems];
+
+  // Calculate Totals
+  let totalBalance = 0;
+  let totalCost = 0;
+  let total24hChange = 0; // Approximate daily PnL
+  
+  const enrichedItems = allItems.map(item => {
+     const liveCoin = coins.find(c => c.id === item.coinId);
+     const currentPrice = liveCoin ? liveCoin.current_price : (item.source === 'wallet' ? 0 : item.avgBuyPrice); 
+     
+     const currentValue = currentPrice * item.amount;
+     const costBasis = item.avgBuyPrice * item.amount;
+     
+     totalBalance += currentValue;
+     if (item.source === 'manual') {
+         totalCost += costBasis;
+     }
+     
+     // 24h PnL estimate
+     const changePct = liveCoin ? liveCoin.price_change_percentage_24h : (item.priceChange24h || 0);
+     const profit24h = (currentValue * changePct) / 100;
+     total24hChange += profit24h;
+
+     return { 
+         ...item, 
+         currentPrice, 
+         currentValue, 
+         profit: item.source === 'manual' ? (currentValue - costBasis) : profit24h, // Manual = Total PnL, Wallet = 24h PnL
+         roi: item.source === 'manual' ? ((currentValue - costBasis) / costBasis) * 100 : changePct 
+     };
+  });
+
+  const totalProfit = totalBalance - totalCost;
+  // Manual Only Profit
+  const manualItems = enrichedItems.filter(i => i.source === 'manual');
+  const manualProfit = manualItems.reduce((acc, i) => acc + (i.currentValue - (i.avgBuyPrice * i.amount)), 0);
+  const manualCost = manualItems.reduce((acc, i) => acc + (i.avgBuyPrice * i.amount), 0);
+  const manualRoi = manualCost > 0 ? (manualProfit / manualCost) * 100 : 0;
+
+  // Chart Data
+  const chartData = enrichedItems.map(i => ({ name: i.symbol.toUpperCase(), value: i.currentValue })).filter(i => i.value > 0);
+  const COLORS = ['#6366f1', '#22d3ee', '#f43f5e', '#10b981', '#f59e0b', '#8b5cf6'];
+
+  const handleSave = () => {
+     if (!amount || !buyPrice) return;
+     const coin = coins.find(c => c.id === selectedCoinId);
+     if (!coin) return;
+     const newItem: PortfolioItem = {
+        id: editingItem ? editingItem.id : Date.now().toString(),
+        coinId: coin.id,
+        symbol: coin.symbol,
+        name: coin.name,
+        image: coin.image,
+        amount: parseFloat(amount),
+        avgBuyPrice: parseFloat(buyPrice),
+        source: 'manual'
+     };
+     if (editingItem) {
+        setItems(items.map(i => i.id === editingItem.id ? newItem : i));
+     } else {
+        setItems([...items, newItem]);
+     }
+     setShowAddModal(false);
+     setEditingItem(null);
+     setAmount(''); setBuyPrice('');
+  };
+
+  const handleDelete = (id: string) => {
+     setItems(items.filter(i => i.id !== id));
+  };
+
+  const openAdd = () => {
+     setEditingItem(null); setAmount(''); setBuyPrice(''); setShowAddModal(true);
+  };
+
+  const openEdit = (item: PortfolioItem) => {
+     if (item.source === 'wallet') return;
+     setEditingItem(item); setSelectedCoinId(item.coinId); setAmount(item.amount.toString()); setBuyPrice(item.avgBuyPrice.toString()); setShowAddModal(true);
+  };
+
+  return (
+      <div className="space-y-6 animate-fade-in max-w-5xl mx-auto">
+          {/* Header Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
+                   <div className="relative z-10">
+                       <div className="text-indigo-200 text-sm font-bold uppercase mb-1">{t.pfNetWorth}</div>
+                       <div className="text-3xl font-bold">{formatPrice(totalBalance)}</div>
+                       <div className={`text-sm mt-1 font-medium ${total24hChange >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                           24h: {total24hChange >= 0 ? '+' : ''}{formatPrice(total24hChange)}
+                       </div>
+                   </div>
+                   <Wallet className="absolute right-4 bottom-4 text-white/20 w-16 h-16" />
+              </div>
+              
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+                   <div className="text-slate-500 text-xs font-bold uppercase mb-1">{t.pfManualAssets} PnL</div>
+                   <div className={`text-2xl font-bold ${manualProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                       {manualProfit >= 0 ? '+' : ''}{formatPrice(manualProfit)}
+                   </div>
+                   <div className={`text-sm font-medium ${manualRoi >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                       {manualRoi.toFixed(2)}%
+                   </div>
+              </div>
+
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+                   <div className="flex justify-between items-start">
+                       <div>
+                           <div className="text-slate-500 text-xs font-bold uppercase mb-1">{t.pfWalletAssets}</div>
+                           <div className="text-xl font-bold text-slate-900 dark:text-white">{walletItems.length} Tokens</div>
+                       </div>
+                       <div className="text-right">
+                            <button onClick={connectWallet} className="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors flex items-center gap-1">
+                                {isConnecting ? <Loader2 className="w-3 h-3 animate-spin"/> : <Zap className="w-3 h-3"/>}
+                                {walletAddress ? t.pfWalletConnected : t.pfConnectWallet}
+                            </button>
+                       </div>
+                   </div>
+                   <div className="mt-2">
+                       <input 
+                         type="text" 
+                         value={walletAddress} 
+                         onChange={(e) => setWalletAddress(e.target.value)}
+                         placeholder="0x..." 
+                         className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 mb-2"
+                       />
+                       <button onClick={importAddress} className="w-full text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 py-1 rounded font-semibold">
+                           {t.pfImportAddress}
+                       </button>
+                   </div>
+              </div>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6">
+              {/* Chart */}
+              <div className="md:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 min-h-[300px]">
+                  <h3 className="text-sm font-bold text-slate-500 uppercase mb-4">{t.pfAllocation}</h3>
+                  {chartData.length > 0 ? (
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <RePieChart>
+                                <Pie data={chartData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                                    {chartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                    ))}
+                                </Pie>
+                                <ReTooltip 
+                                   formatter={(value: number) => formatPrice(value)}
+                                   contentStyle={{ backgroundColor: '#0f172a', borderRadius: '8px', border: 'none', color: '#fff' }}
+                                />
+                            </RePieChart>
+                        </ResponsiveContainer>
+                        <div className="flex flex-wrap justify-center gap-2 mt-2">
+                            {chartData.slice(0, 6).map((entry, index) => (
+                                <div key={index} className="flex items-center gap-1 text-xs text-slate-500">
+                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                                    {entry.name}
+                                </div>
+                            ))}
+                        </div>
+                      </div>
+                  ) : (
+                      <div className="h-full flex items-center justify-center text-slate-400 text-sm text-center px-4">
+                          {t.pfNoAssets}
+                      </div>
+                  )}
+              </div>
+
+              {/* List */}
+              <div className="md:col-span-2 space-y-3">
+                  <div className="flex justify-between items-center mb-2">
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">{t.pfAssets}</h3>
+                      <button onClick={openAdd} className="flex items-center gap-1 text-xs font-bold text-indigo-500 hover:text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-1.5 rounded-lg transition-colors">
+                          <Plus size={14} /> {t.pfAddAsset}
+                      </button>
+                  </div>
+                  
+                  {enrichedItems.map(item => (
+                      <div key={item.id} className={`bg-white dark:bg-slate-900 border ${item.source === 'wallet' ? 'border-indigo-100 dark:border-indigo-900/30' : 'border-slate-200 dark:border-slate-800'} rounded-xl p-4 flex items-center justify-between hover:border-indigo-500/30 transition-colors`}>
+                          <div className="flex items-center gap-3">
+                              <img src={item.image} className="w-10 h-10 rounded-full" alt="icon" />
+                              <div>
+                                  <div className="flex items-center gap-2">
+                                      <div className="font-bold text-slate-900 dark:text-white">{item.symbol.toUpperCase()}</div>
+                                      {item.source === 'wallet' && <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded font-bold">WALLET</span>}
+                                  </div>
+                                  <div className="text-xs text-slate-500">{item.amount.toLocaleString()} coins</div>
+                              </div>
+                          </div>
+                          
+                          <div className="text-right hidden sm:block">
+                              <div className="text-xs text-slate-500">{t.pfCurrentVal}</div>
+                              <div className="font-bold text-slate-900 dark:text-white">{formatPrice(item.currentValue)}</div>
+                          </div>
+
+                          <div className="text-right">
+                               <div className="text-xs text-slate-500">{item.source === 'manual' ? t.pfReturn : '24h PnL'}</div>
+                               <div className={`font-bold ${item.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                   {formatPrice(item.profit)}
+                               </div>
+                               <div className={`text-xs ${item.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                   {item.roi.toFixed(2)}%
+                               </div>
+                          </div>
+
+                          <div className="flex gap-1">
+                              {item.source === 'manual' && (
+                                  <>
+                                  <button onClick={() => openEdit(item)} className="p-2 text-slate-400 hover:text-indigo-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"><Edit2 size={16}/></button>
+                                  <button onClick={() => handleDelete(item.id)} className="p-2 text-slate-400 hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"><Trash2 size={16}/></button>
+                                  </>
+                              )}
+                          </div>
+                      </div>
+                  ))}
+                  {allItems.length === 0 && (
+                     <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 border-dashed rounded-xl p-8 text-center">
+                         <Wallet className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                         <p className="text-slate-500">{t.pfNoAssets}</p>
+                     </div>
+                  )}
+              </div>
+          </div>
+
+          {/* Add Asset Modal */}
+          {showAddModal && (
+              <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+                  <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 animate-fade-in-up">
+                      <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                          <h3 className="font-bold text-lg">{t.pfAddTitle}</h3>
+                          <button onClick={() => setShowAddModal(false)}><X className="w-5 h-5"/></button>
+                      </div>
+                      <div className="p-6 space-y-4">
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{t.selectCoin}</label>
+                              <select 
+                                value={selectedCoinId} 
+                                onChange={e => { setSelectedCoinId(e.target.value); if (!editingItem) { const c = coins.find(x => x.id === e.target.value); if (c) setBuyPrice(c.current_price.toString()); } }}
+                                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white"
+                              >
+                                {coins.map(c => <option key={c.id} value={c.id}>{c.name} ({c.symbol.toUpperCase()})</option>)}
+                              </select>
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{t.pfAmount}</label>
+                              <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="0.00" />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{t.pfPricePerCoin}</label>
+                              <input type="number" value={buyPrice} onChange={e => setBuyPrice(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="0.00" />
+                          </div>
+                          <button onClick={handleSave} className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 rounded-xl transition-colors">{t.save}</button>
+                      </div>
+                  </div>
+              </div>
+          )}
+      </div>
+  );
+};
+
+// --- Main App Component ---
 
 const App: React.FC = () => {
   const [lang, setLang] = useState<Language>('zh');
@@ -29,16 +721,6 @@ const App: React.FC = () => {
 
   const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
   const [showSettings, setShowSettings] = useState(false);
-  
-  // Initialize from localStorage directly
-  const [apiKeyInput, setApiKeyInput] = useState(() => {
-    try {
-      return localStorage.getItem('coingecko_api_key') || '';
-    } catch {
-      return '';
-    }
-  });
-  const [saveStatus, setSaveStatus] = useState(false);
   
   // Favorites State
   const [favorites, setFavorites] = useState<string[]>(() => {
@@ -62,22 +744,22 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('bitcoin');
   const [currentCoin, setCurrentCoin] = useState<CoinDetail | null>(null);
   const [coinHistory, setCoinHistory] = useState<ChartDataPoint[]>([]);
-  const [news, setNews] = useState<NewsItem[]>([]);
-  const [analysis, setAnalysis] = useState<TechnicalAnalysis | null>(null);
-
-  // Market News State
-  const [marketNews, setMarketNews] = useState<{flash: any[], articles: any[]}>({flash: [], articles: []});
   
+  // Analysis - Now derived via useMemo to support instant translation switch
+  const analysis = useMemo(() => {
+    if (!currentCoin || coinHistory.length === 0) return null;
+    return analyzeToken(coinHistory, currentCoin.current_price, lang);
+  }, [coinHistory, currentCoin, lang]);
+
+  // Tools & Portfolio State
+  const [converterCoins, setConverterCoins] = useState<CoinDetail[]>([]);
+
   // Separate loading states for better UX
   const [loadingBasic, setLoadingBasic] = useState<boolean>(false);
   const [loadingDeep, setLoadingDeep] = useState<boolean>(false);
   
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-
-  // Determine current URL for QR Code
-  const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
-  const isLocalhost = currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1');
 
   // Apply Theme
   useEffect(() => {
@@ -97,11 +779,6 @@ const App: React.FC = () => {
 
   // Initialize Data
   useEffect(() => {
-    const storedKey = localStorage.getItem('coingecko_api_key');
-    if (storedKey) {
-       setApiKey(storedKey);
-    }
-
     const initData = async () => {
       try {
         setLoadingGlobal(true);
@@ -122,7 +799,7 @@ const App: React.FC = () => {
       }
     };
     initData();
-    // Preload Bitcoin so Analysis isn't empty on first switch
+    // Preload Bitcoin
     loadSpecificCoin('bitcoin', false); 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -132,7 +809,6 @@ const App: React.FC = () => {
     if (favorites.length > 0) {
       fetchCoinsMarketData(favorites).then(data => {
         setWatchlistData(data);
-        // If current category is Favorites, update trending list immediately
         if (activeCategory === 'fav') {
             setTrendingCoins(data);
         }
@@ -148,35 +824,26 @@ const App: React.FC = () => {
   // Handle Category Change
   const handleCategoryChange = async (cat: Category) => {
     setActiveCategory(cat);
-    // If selecting Favorites
     if (cat === 'fav') {
         setTrendingCoins(watchlistData);
         return;
     }
-    // Otherwise fetch API
-    setTrendingCoins([]); // clear temporarily
+    setTrendingCoins([]); 
     const coins = await fetchTrendingCoins(cat);
     setTrendingCoins(coins);
   };
 
-  // Re-fetch news on lang change or view change
+  // Init Converter/Portfolio Coins (Top 50)
   useEffect(() => {
-    if (viewMode === 'news') {
-        setLoadingDeep(true);
-        fetchMarketNews(lang).then(data => {
-            setMarketNews(data);
-            setLoadingDeep(false);
-        });
-    } else if (currentCoin) {
-      fetchNews(currentCoin.symbol, lang).then(setNews);
-    }
-  }, [lang, currentCoin, viewMode]);
+      if ((viewMode === 'tools' || viewMode === 'portfolio') && converterCoins.length === 0) {
+          fetchCoinsMarketData(['bitcoin', 'ethereum', 'tether', 'solana', 'binancecoin', 'ripple', 'usd-coin', 'cardano', 'avalanche-2', 'dogecoin', 'polkadot', 'tron', 'chainlink', 'matic-network', 'shiba-inu', 'litecoin', 'uniswap', 'near', 'kaspa', 'aptos', 'monero', 'stellar', 'sui', 'pepe', 'render-token', 'arbitrum', 'optimism']).then(setConverterCoins);
+      }
+  }, [viewMode, converterCoins.length]);
 
   const handleRefresh = async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
     try {
-      // Always refresh global data
       const [gData, fgData] = await Promise.all([
         fetchGlobalData(),
         fetchFearAndGreed()
@@ -185,9 +852,7 @@ const App: React.FC = () => {
       setFearGreed(fgData);
 
       if (viewMode === 'dashboard') {
-        // Refresh list
         if (activeCategory === 'fav') {
-           // Refresh favorites specifically
            if (favorites.length > 0) {
              const data = await fetchCoinsMarketData(favorites);
              setWatchlistData(data);
@@ -198,27 +863,15 @@ const App: React.FC = () => {
            setTrendingCoins(coins);
         }
       } else if (viewMode === 'analysis' && currentCoin) {
-        // Refresh specific coin
         await loadSpecificCoin(currentCoin.id, false); 
-      } else if (viewMode === 'news') {
-          const data = await fetchMarketNews(lang);
-          setMarketNews(data);
+      } else if (viewMode === 'tools' || viewMode === 'portfolio') {
+          fetchCoinsMarketData(['bitcoin', 'ethereum', 'tether', 'solana', 'binancecoin']).then(setConverterCoins); // Lightweight refresh
       }
     } catch (e) {
       console.error(e);
     } finally {
       setIsRefreshing(false);
     }
-  };
-
-  const saveSettings = () => {
-    const key = apiKeyInput.trim();
-    setApiKey(key); 
-    setSaveStatus(true);
-    setTimeout(() => {
-      setSaveStatus(false);
-      setShowSettings(false);
-    }, 1000);
   };
 
   const toggleFavorite = (coinId: string) => {
@@ -241,7 +894,7 @@ const App: React.FC = () => {
     setLoadingBasic(true);
     setLoadingDeep(true); 
     setError(null);
-    setAnalysis(null);
+    // analysis set via useMemo based on coinHistory
 
     if (switchToAnalysis) {
       setViewMode('analysis');
@@ -253,18 +906,9 @@ const App: React.FC = () => {
       setCurrentCoin(coinData);
       setLoadingBasic(false); 
 
-      const [historyData, newsData] = await Promise.all([
-        fetchCoinHistory(id),
-        fetchNews(coinData.symbol, lang)
-      ]);
-      
+      const historyData = await fetchCoinHistory(id);
       setCoinHistory(historyData);
-      setNews(newsData);
       
-      if (coinData) {
-        const result = analyzeToken(historyData, coinData.current_price);
-        setAnalysis(result);
-      }
     } catch (err: any) {
       console.error(err);
       setError(t.errorGeneric);
@@ -279,7 +923,7 @@ const App: React.FC = () => {
     setLoadingBasic(true);
     setLoadingDeep(true);
     setError(null);
-    setAnalysis(null);
+    // analysis set via useMemo
     setViewMode('analysis');
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -289,18 +933,9 @@ const App: React.FC = () => {
       setCurrentCoin(coinData);
       setLoadingBasic(false); 
 
-      const [historyData, newsData] = await Promise.all([
-        fetchCoinHistory(resolvedId),
-        fetchNews(coinData.symbol, lang)
-      ]);
-      
+      const historyData = await fetchCoinHistory(resolvedId);
       setCoinHistory(historyData);
-      setNews(newsData);
       
-      if (coinData) {
-        const result = analyzeToken(historyData, coinData.current_price);
-        setAnalysis(result);
-      }
     } catch (err: any) {
       console.error(err);
       setError(err.message === "NOT_FOUND" ? t.errorNotFound : t.errorGeneric);
@@ -308,17 +943,17 @@ const App: React.FC = () => {
       setLoadingBasic(false);
       setLoadingDeep(false);
     }
-  }, [t, lang]);
+  }, [t]);
 
   const onSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     handleSearch(searchQuery);
   };
 
-  const onMarketLeaderClick = (coinId: string) => {
+  const onMarketLeaderClick = useCallback((coinId: string) => {
     setSearchQuery(coinId);
     loadSpecificCoin(coinId, true);
-  };
+  }, []);
 
   const formatCurrency = (val: number) => {
     if (!val) return '$0';
@@ -364,255 +999,133 @@ const App: React.FC = () => {
     setLang(prev => prev === 'en' ? 'zh' : 'en');
   };
 
-  // Component: Profit Calculator
-  const ProfitCalculator: React.FC<{ currentPrice: number, targetPrice?: string }> = ({ currentPrice, targetPrice }) => {
-    const [principal, setPrincipal] = useState<string>('1000');
-    const [buyPrice, setBuyPrice] = useState<string>(currentPrice.toString());
-    const [sellPrice, setSellPrice] = useState<string>('');
-
-    useEffect(() => {
-        if (currentPrice) setBuyPrice(currentPrice.toString());
-    }, [currentPrice]);
-
-    const p = parseFloat(principal) || 0;
-    const b = parseFloat(buyPrice) || 0;
-    const s = parseFloat(sellPrice) || 0;
-
-    let profit = 0;
-    let roi = 0;
-    let totalValue = 0;
-
-    if (b > 0 && p > 0) {
-        const amount = p / b;
-        totalValue = amount * (s > 0 ? s : b); 
-        if (s > 0) {
-            profit = totalValue - p;
-            roi = (profit / p) * 100;
-        }
-    }
-
-    const useCurrent = () => setBuyPrice(currentPrice.toString());
-    const useTarget = () => {
-        if (targetPrice) {
-            const clean = targetPrice.replace(/[^0-9.]/g, '');
-            setSellPrice(clean);
-        }
-    };
-
-    return (
-        <div className="md:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-md transition-colors relative overflow-hidden">
-             <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 dark:bg-indigo-500/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
-             
-             <h3 className="text-lg font-bold text-indigo-500 dark:text-indigo-400 mb-4 flex items-center gap-2 relative z-10">
-                 <Calculator className="w-5 h-5" /> {t.calcTitle}
-             </h3>
-
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
-                 <div className="space-y-4 md:col-span-1">
-                     <div>
-                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{t.calcPrincipal}</label>
-                         <input type="number" value={principal} onChange={e => setPrincipal(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm" />
-                     </div>
-                     <div>
-                         <div className="flex justify-between items-center mb-1">
-                             <label className="block text-xs font-bold text-slate-500 uppercase">{t.calcBuyPrice}</label>
-                             <button onClick={useCurrent} className="text-[10px] text-indigo-500 hover:text-indigo-600 font-bold bg-indigo-50 dark:bg-indigo-900/20 px-1.5 py-0.5 rounded">{t.calcUseCurrent}</button>
-                         </div>
-                         <input type="number" value={buyPrice} onChange={e => setBuyPrice(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm" />
-                     </div>
-                     <div>
-                         <div className="flex justify-between items-center mb-1">
-                             <label className="block text-xs font-bold text-slate-500 uppercase">{t.calcSellPrice}</label>
-                             <button onClick={useTarget} className="text-[10px] text-emerald-500 hover:text-emerald-600 font-bold bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded">{t.calcUseTarget}</button>
-                         </div>
-                         <input type="number" value={sellPrice} onChange={e => setSellPrice(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm" />
-                     </div>
-                 </div>
-
-                 <div className="md:col-span-2 bg-slate-50 dark:bg-slate-800/30 rounded-xl p-4 flex flex-col justify-center gap-4 border border-slate-100 dark:border-slate-800/50">
-                     <div className="grid grid-cols-2 gap-4">
-                         <div>
-                             <div className="text-xs text-slate-500 mb-1">{t.calcProfit}</div>
-                             <div className={`text-2xl font-bold ${profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                 {profit >= 0 ? '+' : ''}{profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs text-slate-400">USD</span>
-                             </div>
-                         </div>
-                         <div>
-                             <div className="text-xs text-slate-500 mb-1">{t.calcRoi}</div>
-                             <div className={`text-2xl font-bold ${roi >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                 {roi >= 0 ? '+' : ''}{roi.toFixed(2)}%
-                             </div>
-                         </div>
-                     </div>
-                     <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                        <div className={`h-full transition-all duration-500 ${roi >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`} 
-                             style={{ 
-                                 width: `${Math.min(Math.abs(roi), 100)}%`, 
-                                 marginLeft: roi < 0 ? 'auto' : '0'
-                             }}>
-                        </div>
-                     </div>
-                     <p className="text-xs text-slate-400 text-center">
-                        {roi > 0 ? "🚀 To the moon!" : roi < 0 ? "📉 HODL or Stop Loss?" : "Waiting for input..."}
-                     </p>
-                 </div>
-             </div>
-        </div>
-    );
-  };
-
-  const CoinOverviewCard: React.FC<{ coin: CoinDetail }> = ({ coin }) => (
-    <div 
-      onClick={() => onMarketLeaderClick(coin.id)}
-      className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/80 hover:border-indigo-500/50 p-5 rounded-2xl cursor-pointer transition-all hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between group shadow-sm hover:shadow-indigo-500/10"
-    >
-      <div className="flex items-center gap-4">
-        <img src={coin.image} alt={coin.name} className="w-10 h-10 rounded-full shadow-lg" />
-        <div>
-          <div className="font-bold text-lg text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-            {coin.symbol.toUpperCase()}
-          </div>
-          <div className="text-xs text-slate-500 dark:text-slate-500 font-medium">{coin.name}</div>
-        </div>
-      </div>
-      <div className="text-right">
-        <div className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-          {formatPrice(coin.current_price)}
-        </div>
-        <div className={`flex items-center justify-end gap-1 text-xs font-semibold mt-1 ${coin.price_change_percentage_24h >= 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>
-          {coin.price_change_percentage_24h >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-          {Math.abs(coin.price_change_percentage_24h).toFixed(2)}%
-        </div>
-      </div>
-    </div>
-  );
-
-  const IndicatorCard: React.FC<{ icon: React.ReactNode, label: string, metric: IndicatorMetric | undefined }> = ({ icon, label, metric }) => {
-    if (!metric) return <div className="h-24 bg-slate-200 dark:bg-slate-800/50 rounded-xl animate-pulse"></div>;
-    
-    let statusColor = "text-slate-600 dark:text-slate-300";
-    let statusBg = "bg-slate-100 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600";
-    const s = metric.status;
-    
-    if (s.includes('Strong') || s.includes('增强') || s.includes('Bullish') || s.includes('偏强') || s.includes('Buy') || s.includes('多头') || s.includes('金叉') || s.includes('合理')) {
-      statusColor = "text-emerald-600 dark:text-emerald-400";
-      statusBg = "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20";
-    } else if (s.includes('Weak') || s.includes('转弱') || s.includes('Bearish') || s.includes('偏弱') || s.includes('Sell') || s.includes('空头') || s.includes('恐慌')) {
-      statusColor = "text-rose-600 dark:text-rose-400";
-      statusBg = "bg-rose-50 dark:bg-rose-500/10 border-rose-200 dark:border-rose-500/20";
-    }
-
-    return (
-      <div className="bg-white dark:bg-slate-900/40 p-3 rounded-xl border border-slate-200 dark:border-slate-800/50 hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col gap-2 shadow-sm">
-         <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
-               {icon}
-               {label}
-            </div>
-            <div className={`px-2 py-0.5 rounded text-xs font-bold border ${statusBg} ${statusColor}`}>
-               {metric.status}
-            </div>
-         </div>
-         <p className="text-xs text-slate-600 dark:text-slate-500 leading-relaxed line-clamp-2">{metric.desc}</p>
-      </div>
-    );
+  const getCategoryIcon = (cat: Category) => {
+      switch(cat) {
+          case 'fav': return <Star size={14} className={activeCategory === 'fav' ? 'fill-indigo-600 dark:fill-white text-indigo-600 dark:text-white' : ''} />;
+          case 'all': return <TrendingUp size={14} />;
+          case 'eth': return <Gem size={14} />;
+          case 'sol': return <Zap size={14} />;
+          case 'bsc': return <Hexagon size={14} />;
+          case 'arb': return <Layers size={14} />;
+          default: return <TrendingUp size={14} />;
+      }
   };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans selection:bg-indigo-500/30 transition-colors duration-300">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors duration-300">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setViewMode('dashboard')}>
-            <div className="bg-gradient-to-tr from-indigo-500 to-purple-500 p-2 rounded-lg shadow-lg shadow-indigo-500/20">
-              <Activity className="w-6 h-6 text-white" />
+      
+      {/* --- HEADER --- */}
+      <header className="sticky top-0 z-50 pt-3 px-4 pb-2">
+        <div className="max-w-7xl mx-auto">
+          <div className="relative bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white/20 dark:border-slate-800 shadow-xl rounded-2xl h-16 flex items-center justify-between px-4">
+            
+            {/* Logo Section */}
+            <div className="flex items-center gap-2.5 cursor-pointer group" onClick={() => setViewMode('dashboard')}>
+              <div className="relative flex items-center justify-center w-10 h-10 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-xl shadow-lg shadow-indigo-500/20 group-hover:shadow-indigo-500/40 transition-all duration-300">
+                <Activity className="w-5 h-5 text-white" />
+              </div>
+              <span className="font-bold text-xl tracking-tight text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                CoinBingo
+              </span>
             </div>
-            <h1 className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-500 dark:from-white dark:to-slate-400 hidden sm:block">
-              {t.appTitle}
-            </h1>
-          </div>
-          
-          <div className="flex items-center gap-2 md:gap-4">
-            <nav className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-1 transition-colors">
-              <button onClick={() => setViewMode('dashboard')} className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${viewMode === 'dashboard' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>{t.dashboard}</button>
-              <button onClick={() => setViewMode('analysis')} className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${viewMode === 'analysis' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>{t.analysis}</button>
-              <button onClick={() => setViewMode('news')} className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${viewMode === 'news' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>{t.news}</button>
-            </nav>
-            <div className="flex items-center gap-1 sm:gap-2">
-              <button onClick={handleRefresh} className="p-2 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700" title={t.refresh}>
-                <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
-              </button>
-              <button onClick={() => setShowSettings(!showSettings)} className="p-2 transition-colors rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"><Settings className="w-5 h-5" /></button>
-              <button onClick={toggleLang} className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"><Globe className="w-5 h-5" /></button>
+            
+            {/* Nav - Empty Center (Dashboard removed) */}
+            <div></div>
+
+            {/* Actions (Right) */}
+            <div className="flex items-center gap-2">
+               <button onClick={handleRefresh} className={`p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-all ${isRefreshing ? 'animate-spin text-indigo-500' : ''}`}>
+                 <RefreshCw className="w-5 h-5" />
+               </button>
+               <button onClick={() => setShowSettings(true)} className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-all">
+                 <Settings className="w-5 h-5" />
+               </button>
             </div>
           </div>
         </div>
-        
-        {/* Settings */}
+
+        {/* Settings Modal */}
         {showSettings && (
-          <div className="max-w-7xl mx-auto px-4 py-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 animate-fade-in-down transition-colors">
-            <div className="max-w-xl ml-auto bg-slate-50 dark:bg-slate-800 rounded-xl p-4 shadow-xl border border-slate-200 dark:border-slate-700">
-               {/* API Key Section */}
-               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">{t.apiKeyLabel}</label>
-               <div className="flex gap-2">
-                 <input type="text" value={apiKeyInput} onChange={(e) => setApiKeyInput(e.target.value)} placeholder={t.enterKey} className="flex-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm" />
-                 <button onClick={saveSettings} className={`px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors ${saveStatus ? 'bg-emerald-600 text-white' : 'bg-indigo-600 text-white hover:bg-indigo-500'}`}>{saveStatus ? <Check size={16}/> : <Save size={16}/>} {saveStatus ? t.saved : t.save}</button>
-               </div>
-               <p className="text-xs text-slate-500 mt-2">{t.apiKeyDesc}</p>
-
-               {/* Theme Toggle */}
-               <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2"><Sun className="w-4 h-4 text-orange-400" /> {t.theme}</span>
-                  <button onClick={toggleTheme} className="bg-slate-200 dark:bg-slate-700 p-1 rounded-full w-12 relative h-6 transition-colors">
-                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-all duration-300 transform ${theme === 'dark' ? 'translate-x-6' : 'translate-x-1'}`}></div>
-                  </button>
-               </div>
-
-               {/* Mobile QR Section */}
-               <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-2"><Smartphone className="w-4 h-4 text-indigo-400"/> {t.mobileAccess}</label>
-                 <div className="flex items-start gap-4 bg-white dark:bg-slate-950/50 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
-                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(currentUrl)}&color=${theme === 'dark' ? '22d3ee' : '6366f1'}&bgcolor=${theme === 'dark' ? '0f172a' : 'ffffff'}`} alt="QR Code" className="w-20 h-20 rounded-lg border border-slate-200 dark:border-slate-700 p-1 bg-white dark:bg-slate-900 flex-shrink-0" />
-                    <div className="text-xs text-slate-500 dark:text-slate-400 flex-1 space-y-2">
-                      <p className="leading-relaxed">{t.mobileDesc}</p>
-                      {isLocalhost && (
-                        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-900/50 p-2 rounded text-yellow-600 dark:text-yellow-500 flex items-start gap-2">
-                           <AlertCircle size={14} className="mt-0.5 flex-shrink-0"/>
-                           <span>Phone cannot scan <b>localhost</b>. Use your PC's Network IP (e.g. 192.168.x.x) or a deploy URL.</span>
-                        </div>
-                      )}
-                      <div className="bg-slate-50 dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-800 flex items-center gap-2 break-all">
-                        <Link size={12} className="flex-shrink-0"/>
-                        <span className="text-slate-500 select-all">{currentUrl}</span>
-                      </div>
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm animate-fade-in">
+             <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-fade-in-up">
+                <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                    <h3 className="font-bold text-lg">{t.settings}</h3>
+                    <button onClick={() => setShowSettings(false)} className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"><X className="w-5 h-5"/></button>
+                </div>
+                <div className="p-6 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <button onClick={toggleTheme} className="flex flex-col items-center justify-center p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-500 transition-all gap-2">
+                           <div className="p-2 bg-white dark:bg-slate-700 rounded-full shadow-sm">{theme === 'dark' ? <Moon size={20} className="text-indigo-400"/> : <Sun size={20} className="text-orange-400"/>}</div>
+                           <span className="text-sm font-medium">{t.theme}</span>
+                        </button>
+                        <button onClick={toggleLang} className="flex flex-col items-center justify-center p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-500 transition-all gap-2">
+                           <div className="flex items-center justify-center w-9 h-9 font-bold bg-white dark:bg-slate-700 rounded-full shadow-sm text-xs">
+                             <Globe size={18}/>
+                           </div>
+                           <span className="text-sm font-medium">{lang === 'en' ? 'English' : '中文'}</span>
+                        </button>
                     </div>
-                 </div>
-               </div>
-            </div>
+                </div>
+             </div>
           </div>
         )}
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4 pb-10">
         
-        {/* Compact Hero */}
-        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg transition-colors">
-           <div className="text-center md:text-left flex items-center gap-3">
-             <div className="bg-indigo-50 dark:bg-indigo-500/10 p-2 rounded-lg"><Search className="w-5 h-5 text-indigo-500 dark:text-indigo-400" /></div>
-             <div>
-               <h2 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
-                 {t.heroTitle}
-               </h2>
-               <p className="text-slate-500 text-xs hidden md:block">{t.heroSubtitle}</p>
+        {/* Compact Search Hero */}
+        {(viewMode === 'dashboard' || viewMode === 'analysis') && (
+          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg transition-colors">
+             <div className="text-center md:text-left flex items-center gap-3">
+               <div className="bg-indigo-50 dark:bg-indigo-500/10 p-2 rounded-lg"><Search className="w-5 h-5 text-indigo-500 dark:text-indigo-400" /></div>
+               <div>
+                 <h2 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+                   {t.heroTitle}
+                 </h2>
+                 <p className="text-slate-500 text-xs hidden md:block">{t.heroSubtitle}</p>
+               </div>
              </div>
-           </div>
-           
-           <div className="w-full max-w-lg group">
-              <form onSubmit={onSearchSubmit} className="relative flex items-center">
-                <input type="text" className="block w-full pl-4 pr-24 py-2.5 border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-950/50 rounded-lg leading-5 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:bg-white dark:focus:bg-slate-950 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm transition-all" placeholder={t.searchPlaceholder} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                <div className="absolute right-1 top-1 bottom-1"><button type="submit" className="h-full bg-indigo-600 hover:bg-indigo-500 text-white px-3 rounded-md text-xs font-semibold transition-colors shadow-sm">Search</button></div>
-              </form>
-           </div>
+             
+             <div className="w-full max-w-lg group">
+                <form onSubmit={onSearchSubmit} className="relative flex items-center">
+                  <input type="text" className="block w-full pl-4 pr-24 py-2.5 border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-950/50 rounded-lg leading-5 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:bg-white dark:focus:bg-slate-950 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm transition-all" placeholder={t.searchPlaceholder} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                  <div className="absolute right-1 top-1 bottom-1"><button type="submit" className="h-full bg-indigo-600 hover:bg-indigo-500 text-white px-3 rounded-md text-xs font-semibold transition-colors shadow-sm">Search</button></div>
+                </form>
+             </div>
+          </section>
+        )}
+
+        {/* QUICK ACCESS NAVIGATION GRID */}
+        <section className="grid grid-cols-3 gap-2 md:gap-4 mb-6">
+             <button 
+                onClick={() => setViewMode('analysis')} 
+                className={`p-3 md:p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${viewMode === 'analysis' ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 shadow-sm' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700'}`}
+             >
+                <div className={`p-2 rounded-full ${viewMode === 'analysis' ? 'bg-indigo-500 text-white' : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-500 dark:text-indigo-400'}`}>
+                    <Zap size={18} />
+                </div>
+                <span className="text-[10px] md:text-xs font-bold text-slate-600 dark:text-slate-300">{t.analysis}</span>
+             </button>
+
+             <button 
+                onClick={() => setViewMode('portfolio')} 
+                className={`p-3 md:p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${viewMode === 'portfolio' ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 shadow-sm' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700'}`}
+             >
+                <div className={`p-2 rounded-full ${viewMode === 'portfolio' ? 'bg-emerald-500 text-white' : 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-500 dark:text-emerald-400'}`}>
+                    <Wallet size={18} />
+                </div>
+                <span className="text-[10px] md:text-xs font-bold text-slate-600 dark:text-slate-300">{t.portfolio}</span>
+             </button>
+
+             <button 
+                onClick={() => setViewMode('tools')} 
+                className={`p-3 md:p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${viewMode === 'tools' ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 shadow-sm' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-orange-300 dark:hover:border-orange-700'}`}
+             >
+                <div className={`p-2 rounded-full ${viewMode === 'tools' ? 'bg-orange-500 text-white' : 'bg-orange-100 dark:bg-orange-900/50 text-orange-500 dark:text-orange-400'}`}>
+                    <LayoutGrid size={18} />
+                </div>
+                <span className="text-[10px] md:text-xs font-bold text-slate-600 dark:text-slate-300">{t.tools}</span>
+             </button>
         </section>
 
         {error && <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/50 rounded-lg p-4 flex items-center gap-3 text-red-600 dark:text-red-200 animate-fade-in"><AlertCircle className="w-5 h-5 flex-shrink-0" /><p>{error}</p></div>}
@@ -622,7 +1135,7 @@ const App: React.FC = () => {
         {!loadingBasic && (
             <>
                 {viewMode === 'dashboard' && (
-                  <div className="space-y-12 animate-fade-in">
+                  <div className="space-y-8 animate-fade-in">
                      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                         <div className="bg-white dark:bg-slate-900/50 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl p-5 relative overflow-hidden group hover:border-indigo-500/30 transition-all shadow-sm">
                            <div className="absolute right-0 top-0 w-24 h-24 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-full blur-2xl -mr-10 -mt-10 group-hover:bg-indigo-500/10 dark:group-hover:bg-indigo-500/20 transition-all"></div>
@@ -655,21 +1168,22 @@ const App: React.FC = () => {
                              <h3 className="text-xl font-bold text-slate-900 dark:text-white">{t.marketLeaders}</h3>
                            </div>
                            
-                           <div className="bg-slate-100 dark:bg-slate-900 p-1 rounded-xl flex gap-1 flex-wrap">
+                           <div className="grid grid-cols-3 gap-2 w-full sm:w-auto">
                               {(['all', 'fav', 'eth', 'sol', 'bsc', 'arb'] as Category[]).map(cat => (
                                  <button
                                    key={cat}
                                    onClick={() => handleCategoryChange(cat)}
-                                   className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${activeCategory === cat ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+                                   className={`flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border ${activeCategory === cat ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-500/20' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:border-indigo-300 dark:hover:border-indigo-700'}`}
                                  >
-                                   {cat === 'all' ? t.catAll : cat === 'fav' ? t.catFav : cat === 'eth' ? t.catEth : cat === 'sol' ? t.catSol : cat === 'bsc' ? t.catBsc : t.catArb}
+                                   {getCategoryIcon(cat)}
+                                   <span className="truncate">{cat === 'all' ? t.catAll : cat === 'fav' ? t.catFav : cat === 'eth' ? t.catEth : cat === 'sol' ? t.catSol : cat === 'bsc' ? t.catBsc : t.catArb}</span>
                                  </button>
                               ))}
                            </div>
                         </div>
                         
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                          {trendingCoins.map((coin) => (<CoinOverviewCard key={coin.id} coin={coin} />))}
+                          {trendingCoins.map((coin) => (<CoinOverviewCard key={coin.id} coin={coin} onClick={onMarketLeaderClick} formatPrice={formatPrice} />))}
                           {trendingCoins.length === 0 && !loadingGlobal && (
                               <div className="col-span-4 text-center py-12 bg-white dark:bg-slate-900/30 rounded-xl border border-slate-200 dark:border-slate-800 border-dashed">
                                 {activeCategory === 'fav' ? (
@@ -731,7 +1245,7 @@ const App: React.FC = () => {
                           }
                        </div>
 
-                       <div className="md:col-span-1 md:row-span-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-md flex flex-col transition-colors">
+                       <div className="md:col-span-1 md:row-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-md flex flex-col transition-colors">
                           <h3 className="text-lg font-bold text-indigo-500 dark:text-indigo-400 mb-4 flex items-center gap-2"><BarChart2 className="w-5 h-5" /> {t.keyIndicators}</h3>
                           <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
                             <div className="grid grid-cols-1 gap-3">
@@ -764,9 +1278,7 @@ const App: React.FC = () => {
                           </div>
                        </div>
 
-                       <ProfitCalculator currentPrice={currentCoin.current_price} targetPrice={analysis?.shortTerm?.target} />
-
-                       <div className="md:col-span-2 grid md:grid-cols-2 gap-6">
+                       <div className="md:col-span-3 grid md:grid-cols-2 gap-6">
                           <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-900/40 dark:to-slate-900 border border-indigo-200 dark:border-indigo-500/30 rounded-2xl p-6 shadow-md transition-colors">
                               <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2"><Lightbulb className="w-5 h-5 text-yellow-500 dark:text-yellow-400" /> {t.summary}</h3>
                               {loadingDeep ? <div className="space-y-2"><div className="h-4 w-full bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div><div className="h-4 w-2/3 bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div></div> : 
@@ -781,105 +1293,26 @@ const App: React.FC = () => {
                           </div>
                        </div>
                     </div>
+
+                    {/* MERGED ON-CHAIN SECTION */}
+                    <OnChainView coin={currentCoin} t={t} formatPrice={formatPrice} />
+
+                  </div>
+                )}
+                
+                {viewMode === 'tools' && (
+                  <div className="grid md:grid-cols-2 gap-6 animate-fade-in">
+                      <CryptoConverter coins={converterCoins} t={t} formatPrice={formatPrice} />
+                      <ProfitCalculator t={t} />
                   </div>
                 )}
 
-                {viewMode === 'news' && (
-                  <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-                     <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2 bg-indigo-500/10 rounded-lg"><Newspaper className="w-6 h-6 text-indigo-500 dark:text-indigo-400" /></div>
-                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{t.newsTitle}</h2>
-                     </div>
-
-                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        {/* Flash News (Timeline) */}
-                        <div className="lg:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm h-fit">
-                           <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
-                              <Zap className="w-5 h-5 text-yellow-500" /> {t.tabFlash}
-                           </h3>
-                           {loadingDeep ? (
-                               <div className="space-y-6">
-                                   {[1,2,3,4,5].map(i => (
-                                       <div key={i} className="flex gap-4">
-                                           <div className="w-2 bg-slate-200 dark:bg-slate-800 h-24 rounded-full"></div>
-                                           <div className="flex-1 space-y-2">
-                                               <div className="h-4 w-1/3 bg-slate-200 dark:bg-slate-800 rounded"></div>
-                                               <div className="h-16 w-full bg-slate-200 dark:bg-slate-800 rounded"></div>
-                                           </div>
-                                       </div>
-                                   ))}
-                               </div>
-                           ) : (
-                               <div className="space-y-0 relative border-l-2 border-slate-100 dark:border-slate-800 ml-3">
-                                  {marketNews.flash.length > 0 ? marketNews.flash.map((item, idx) => (
-                                      <div key={idx} className="mb-8 pl-6 relative group">
-                                         {/* Dot */}
-                                         <div className="absolute -left-[9px] top-1 w-4 h-4 bg-white dark:bg-slate-900 border-2 border-indigo-500 rounded-full group-hover:bg-indigo-500 transition-colors"></div>
-                                         <div className="flex items-center gap-2 mb-1">
-                                             <Clock className="w-3 h-3 text-slate-400" />
-                                             <span className="text-xs font-mono text-slate-500 dark:text-slate-400">{new Date(item.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                         </div>
-                                         <a href={item.url} target="_blank" rel="noreferrer" className="block hover:opacity-80 transition-opacity">
-                                             <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm leading-snug mb-1 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{item.title}</h4>
-                                             <p className="text-xs text-slate-500 dark:text-slate-500 line-clamp-3">{item.description}</p>
-                                         </a>
-                                      </div>
-                                  )) : <div className="pl-6 text-slate-500 text-sm">No flash news available.</div>}
-                               </div>
-                           )}
-                        </div>
-
-                        {/* Articles (Grid) */}
-                        <div className="lg:col-span-2">
-                           <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2 pb-3">
-                              <Layers className="w-5 h-5 text-indigo-500" /> {t.tabArticles}
-                           </h3>
-                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                              {loadingDeep ? [1,2,3,4].map(i => (
-                                  <div key={i} className="bg-white dark:bg-slate-900 rounded-2xl h-64 border border-slate-200 dark:border-slate-800 animate-pulse"></div>
-                              )) : marketNews.articles.length > 0 ? marketNews.articles.map((item, idx) => (
-                                  <a key={idx} href={item.url} target="_blank" rel="noreferrer" className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden hover:shadow-lg hover:border-indigo-500/30 transition-all group flex flex-col h-full">
-                                      {item.imageurl ? (
-                                          <div className="h-48 overflow-hidden bg-slate-100 dark:bg-slate-800">
-                                              <img 
-                                                src={item.imageurl} 
-                                                alt={item.title} 
-                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                                onError={(e) => {
-                                                  (e.target as HTMLImageElement).style.display = 'none';
-                                                  ((e.target as HTMLImageElement).nextSibling as HTMLElement).style.display = 'flex';
-                                                }}
-                                              />
-                                              <div className="w-full h-full hidden items-center justify-center bg-slate-100 dark:bg-slate-800">
-                                                  <ImageOff className="w-10 h-10 text-slate-300 dark:text-slate-600" />
-                                              </div>
-                                          </div>
-                                      ) : <div className="h-48 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 flex items-center justify-center"><Newspaper className="w-12 h-12 text-indigo-500/20" /></div>}
-                                      <div className="p-5 flex-1 flex flex-col">
-                                          <div className="flex items-center gap-2 mb-3">
-                                              <span className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold px-2 py-0.5 rounded uppercase">{t.newsSource}: {item.author}</span>
-                                              <span className="text-xs text-slate-400">{new Date(item.created_at).toLocaleDateString()}</span>
-                                          </div>
-                                          <h4 className="font-bold text-slate-900 dark:text-white text-lg leading-tight mb-3 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2">{item.title}</h4>
-                                          <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-3 mb-4 flex-1">{item.description}</p>
-                                          <div className="flex items-center text-indigo-600 dark:text-indigo-400 text-sm font-semibold mt-auto group-hover:underline">
-                                              {t.readMore} <ChevronRight className="w-4 h-4 ml-1" />
-                                          </div>
-                                      </div>
-                                  </a>
-                              )) : <div className="col-span-2 text-center py-12 text-slate-500">No articles found.</div>}
-                           </div>
-                        </div>
-                     </div>
-                  </div>
+                {viewMode === 'portfolio' && (
+                    <PortfolioView coins={converterCoins} t={t} formatPrice={formatPrice} />
                 )}
             </>
         )}
       </main>
-
-      <footer className="border-t border-slate-200 dark:border-slate-800 mt-16 py-8 bg-white dark:bg-slate-900 transition-colors">
-        <div className="max-w-7xl mx-auto px-4 text-center text-slate-500 text-sm"><p>© {new Date().getFullYear()} CryptoInsight.</p><p className="mt-2 text-xs opacity-50">{t.footer}</p></div>
-      </footer>
     </div>
   );
 };

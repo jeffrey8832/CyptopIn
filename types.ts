@@ -23,6 +23,10 @@ export interface CoinDetail {
   price_change_percentage_24h: number;
   ath: number;
   last_updated: string;
+  circulating_supply?: number;
+  total_supply?: number;
+  max_supply?: number;
+  fully_diluted_valuation?: number;
   sparkline_in_7d?: { price: number[] };
 }
 
@@ -82,5 +86,29 @@ export interface TechnicalAnalysis {
   };
 }
 
-// Added 'fav'
+export interface OnChainData {
+  unlockProgress: number; // 0-100
+  lockedPercent: number;
+  whaleActivity: 'Low' | 'Medium' | 'High' | 'Very High';
+  whaleScore: number; // 0-100
+  netFlowStatus: 'Inflow' | 'Outflow' | 'Neutral';
+  netFlowScore: number; // -100 to 100
+  holders: number;
+  fdvGap: number; // Ratio of FDV / Market Cap
+}
+
+export interface PortfolioItem {
+  id: string;
+  coinId: string;
+  symbol: string;
+  name: string;
+  image: string;
+  amount: number;
+  avgBuyPrice: number;
+  source: 'manual' | 'wallet'; // Distinguish between manually added and wallet fetched
+  priceChange24h?: number; // For wallet items to show daily PnL
+}
+
 export type Category = 'fav' | 'all' | 'eth' | 'sol' | 'bsc' | 'arb';
+
+export type ViewMode = 'dashboard' | 'analysis' | 'tools' | 'portfolio';
