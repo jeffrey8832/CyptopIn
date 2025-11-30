@@ -6,6 +6,7 @@ export const translations = {
     appTitle: "CryptoInsight",
     dashboard: "Dashboard",
     analysis: "Analysis",
+    news: "News",
     heroTitle: "Market Insight",
     heroSubtitle: "Real-time analysis & trends.",
     searchPlaceholder: "Search (e.g., BTC, ETH)...",
@@ -112,12 +113,20 @@ export const translations = {
     // Indicator Groups
     groupTrend: "Trend & Structure",
     groupMomentum: "Momentum & Volume",
-    groupOnChain: "On-Chain"
+    groupOnChain: "On-Chain",
+
+    // News Page
+    newsTitle: "Crypto News 24/7",
+    tabFlash: "7x24 Flash",
+    tabArticles: "Top Stories",
+    readMore: "Read Source",
+    newsSource: "Source"
   },
   zh: {
     appTitle: "CryptoInsight",
     dashboard: "行情看板",
     analysis: "智能分析",
+    news: "快讯/新闻",
     heroTitle: "市场洞察",
     heroSubtitle: "实时行情与智能分析",
     searchPlaceholder: "全网搜币 (如 BTC, ETH)...",
@@ -224,6 +233,13 @@ export const translations = {
     // Indicator Groups
     groupTrend: "趋势与结构",
     groupMomentum: "动能与成交量",
-    groupOnChain: "链上数据"
+    groupOnChain: "链上数据",
+
+    // News Page
+    newsTitle: "7x24 加密快讯",
+    tabFlash: "实时快讯",
+    tabArticles: "精选文章",
+    readMore: "阅读原文",
+    newsSource: "来源"
   }
 };

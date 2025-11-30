@@ -43,6 +43,7 @@ export interface NewsItem {
   description: string;
   author: string;
   created_at: number;
+  imageurl?: string;
 }
 
 export interface FearGreedData {
