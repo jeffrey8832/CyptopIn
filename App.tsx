@@ -254,7 +254,7 @@ const OnChainView: React.FC<{ coin: CoinDetail, t: any, formatPrice: (n: number)
   const onChainData = fetchOnChainData(coin);
 
   return (
-    <div className="space-y-6 animate-fade-in-up w-full mt-8">
+    <div className="space-y-6 animate-fade-in-up w-full mt-6">
        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 relative overflow-hidden shadow-lg">
           <div className="absolute top-0 right-0 p-6 opacity-5"><Layers size={120} /></div>
           <div className="flex items-center gap-4 relative z-10 mb-6">
@@ -1029,8 +1029,20 @@ const App: React.FC = () => {
               </span>
             </div>
             
-            {/* Nav - Empty Center (Dashboard removed) */}
-            <div></div>
+            {/* Nav - Scrollable Tabs */}
+            <div className="absolute left-1/2 -translate-x-1/2 overflow-x-auto max-w-[200px] md:max-w-none scrollbar-hide">
+               <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                 {(['dashboard', 'analysis', 'portfolio', 'tools'] as ViewMode[]).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setViewMode(mode)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${viewMode === mode ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                    >
+                      {mode === 'dashboard' ? t.navDashboard : mode === 'analysis' ? t.analysis : mode === 'portfolio' ? t.portfolio : t.tools}
+                    </button>
+                 ))}
+               </div>
+            </div>
 
             {/* Actions (Right) */}
             <div className="flex items-center gap-2">
@@ -1202,8 +1214,9 @@ const App: React.FC = () => {
                 )}
 
                 {viewMode === 'analysis' && currentCoin && (
-                  <div className="max-w-4xl mx-auto space-y-6 animate-fade-in-up">
+                  <div className="max-w-7xl mx-auto space-y-6 animate-fade-in-up">
                     
+                    {/* Header Card */}
                     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 relative overflow-hidden shadow-xl transition-colors">
                        <div className="absolute top-0 right-0 p-6 opacity-5"><Zap size={100} /></div>
                        <div className="flex justify-between items-start relative z-10">
@@ -1222,81 +1235,93 @@ const App: React.FC = () => {
                        </div>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 shadow-md h-[400px]">
-                         <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2"><Activity className="w-3 h-3" />{t.chartTitle}</div>
-                         <div className="h-[340px] w-full">
-                           <PriceChart data={coinHistory} color={currentCoin.price_change_percentage_24h >= 0 ? '#10b981' : '#f43f5e'} />
-                         </div>
-                    </div>
-
-                    <div className="grid md:grid-cols-3 gap-6">
-                       <div className="md:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-md transition-colors h-fit">
-                          <h3 className="text-lg font-bold text-indigo-500 dark:text-indigo-400 mb-4 flex items-center gap-2"><Target className="w-5 h-5" /> {t.shortTerm}</h3>
-                          {loadingDeep ? <div className="space-y-4"><div className="h-10 bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div><div className="grid grid-cols-3 gap-4"><div className="h-20 bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div><div className="h-20 bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div><div className="h-20 bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div></div></div> :
-                          <div className="space-y-4">
-                            <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg"><span className="text-slate-500 dark:text-slate-400 font-medium">{t.direction}</span><span className={`font-bold ${analysis?.shortTerm?.direction === 'Long' ? 'text-emerald-500 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>{analysis?.shortTerm?.direction === 'Long' ? `🟢 ${t.long}` : `🔴 ${t.short}`}</span></div>
-                            <div className="grid grid-cols-3 gap-4">
-                              <div className="p-3 bg-slate-50 dark:bg-slate-800/30 rounded-lg border border-slate-200 dark:border-slate-700/50 hover:border-slate-300 dark:hover:border-slate-600 transition-colors"><div className="text-xs text-slate-500 font-bold uppercase mb-1">{t.entry}</div><div className="font-mono text-slate-900 dark:text-white text-sm font-semibold break-all">{analysis?.shortTerm?.entry || '-'}</div></div>
-                              <div className="p-3 bg-emerald-50 dark:bg-emerald-900/10 rounded-lg border border-emerald-200 dark:border-emerald-900/30 hover:border-emerald-300 dark:hover:border-emerald-700/50 transition-colors"><div className="text-xs text-emerald-600 dark:text-emerald-500/70 font-bold uppercase mb-1">{t.target}</div><div className="font-mono text-emerald-600 dark:text-emerald-400 text-sm font-semibold break-all">{analysis?.shortTerm?.target || '-'}</div></div>
-                              <div className="p-3 bg-rose-50 dark:bg-rose-900/10 rounded-lg border border-rose-200 dark:border-rose-900/30 hover:border-rose-300 dark:hover:border-rose-700/50 transition-colors"><div className="text-xs text-rose-600 dark:text-rose-500/70 font-bold uppercase mb-1">{t.stop}</div><div className="font-mono text-rose-600 dark:text-rose-400 text-sm font-semibold break-all">{analysis?.shortTerm?.stop || '-'}</div></div>
-                            </div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-2 bg-slate-100 dark:bg-slate-800 p-3 rounded border-l-2 border-indigo-500">💡 {t.strategyNote}</div>
-                          </div>
-                          }
-                       </div>
-
-                       <div className="md:col-span-1 md:row-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-md flex flex-col transition-colors">
-                          <h3 className="text-lg font-bold text-indigo-500 dark:text-indigo-400 mb-4 flex items-center gap-2"><BarChart2 className="w-5 h-5" /> {t.keyIndicators}</h3>
-                          <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-                            <div className="grid grid-cols-1 gap-3">
-                              <div className="space-y-3">
-                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-600 uppercase tracking-widest pl-1">{t.groupTrend}</span>
-                                <div className="grid grid-cols-1 gap-2">
-                                  <IndicatorCard icon={<TrendingUp size={14} />} label={t.indTrend} metric={analysis?.trend} />
-                                  <IndicatorCard icon={<Activity size={14} />} label={t.indEma} metric={analysis?.ema} />
-                                  <IndicatorCard icon={<Layers size={14} />} label={t.indStructure} metric={analysis?.structure} />
-                                  <IndicatorCard icon={<Droplets size={14} />} label={t.indBollinger} metric={analysis?.bollinger} />
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* LEFT COLUMN: Chart & Strategy */}
+                        <div className="lg:col-span-2 space-y-6">
+                            {/* Chart Card */}
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 shadow-md h-[500px]">
+                                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2"><Activity className="w-3 h-3" />{t.chartTitle}</div>
+                                <div className="h-[440px] w-full">
+                                <PriceChart data={coinHistory} color={currentCoin.price_change_percentage_24h >= 0 ? '#10b981' : '#f43f5e'} />
                                 </div>
-                              </div>
-                              <div className="space-y-3 mt-4">
-                                 <span className="text-[10px] font-bold text-slate-500 dark:text-slate-600 uppercase tracking-widest pl-1">{t.groupMomentum}</span>
-                                 <div className="grid grid-cols-1 gap-2">
-                                    <IndicatorCard icon={<Zap size={14} />} label={t.indMomentum} metric={analysis?.momentum} />
-                                    <IndicatorCard icon={<Target size={14} />} label={t.indRsi} metric={analysis?.rsiMetric} />
-                                    <IndicatorCard icon={<ArrowUpRight size={14} />} label={t.indMacd} metric={analysis?.macd} />
-                                    <IndicatorCard icon={<BarChart size={14} />} label={t.indVolume} metric={analysis?.volume} />
-                                 </div>
-                              </div>
-                              <div className="space-y-3 mt-4">
-                                 <span className="text-[10px] font-bold text-slate-500 dark:text-slate-600 uppercase tracking-widest pl-1">{t.groupOnChain}</span>
-                                 <div className="grid grid-cols-1 gap-2">
-                                    <IndicatorCard icon={<Coins size={14} />} label={t.indMvrv} metric={analysis?.mvrv} />
-                                    <IndicatorCard icon={<BrainCircuit size={14} />} label={t.indNupl} metric={analysis?.nupl} />
-                                 </div>
-                              </div>
                             </div>
-                          </div>
-                       </div>
 
-                       <div className="md:col-span-3 grid md:grid-cols-2 gap-6">
-                          <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-900/40 dark:to-slate-900 border border-indigo-200 dark:border-indigo-500/30 rounded-2xl p-6 shadow-md transition-colors">
-                              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2"><Lightbulb className="w-5 h-5 text-yellow-500 dark:text-yellow-400" /> {t.summary}</h3>
-                              {loadingDeep ? <div className="space-y-2"><div className="h-4 w-full bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div><div className="h-4 w-2/3 bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div></div> : 
-                              <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-sm font-medium">{currentCoin.name} {analysis?.trend.status === '偏强' || analysis?.trend.status === 'Bullish' ? `${t.summaryBullish} ${formatPrice(analysis?.support || 0)}` : `${t.summaryBearish} ${formatPrice(analysis?.resistance || 0)}`}.</p>
-                              }
-                          </div>
-                          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-md transition-colors">
-                              <h3 className="text-lg font-bold text-indigo-500 dark:text-indigo-400 mb-3 flex items-center gap-2"><BrainCircuit className="w-5 h-5" /> {t.investmentAdvice}</h3>
-                              {loadingDeep ? <div className="space-y-2"><div className="h-4 w-full bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div><div className="h-4 w-2/3 bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div></div> :
-                              <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-300 list-disc pl-4 marker:text-indigo-500"><li>{analysis?.advice === 'Buy' ? t.adviceBuy : analysis?.advice === 'Sell' ? t.adviceSell : t.adviceHold}</li><li>{analysis?.momentum.status === 'Strong' || analysis?.momentum.status === '增强' ? t.momentumStrong : t.momentumWeak}</li></ul>
-                              }
-                          </div>
-                       </div>
+                            {/* Strategy Section */}
+                            <div className="grid md:grid-cols-2 gap-6">
+                                {/* Short Term */}
+                                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-md transition-colors h-fit">
+                                    <h3 className="text-lg font-bold text-indigo-500 dark:text-indigo-400 mb-4 flex items-center gap-2"><Target className="w-5 h-5" /> {t.shortTerm}</h3>
+                                    {loadingDeep ? <div className="space-y-4"><div className="h-10 bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div><div className="grid grid-cols-3 gap-4"><div className="h-20 bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div><div className="h-20 bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div><div className="h-20 bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div></div></div> :
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg"><span className="text-slate-500 dark:text-slate-400 font-medium">{t.direction}</span><span className={`font-bold ${analysis?.shortTerm?.direction === 'Long' ? 'text-emerald-500 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>{analysis?.shortTerm?.direction === 'Long' ? `🟢 ${t.long}` : `🔴 ${t.short}`}</span></div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                        <div className="p-2 bg-slate-50 dark:bg-slate-800/30 rounded-lg border border-slate-200 dark:border-slate-700/50 hover:border-slate-300 dark:hover:border-slate-600 transition-colors"><div className="text-[10px] text-slate-500 font-bold uppercase mb-1">{t.entry}</div><div className="font-mono text-slate-900 dark:text-white text-xs font-semibold break-all">{analysis?.shortTerm?.entry || '-'}</div></div>
+                                        <div className="p-2 bg-emerald-50 dark:bg-emerald-900/10 rounded-lg border border-emerald-200 dark:border-emerald-900/30 hover:border-emerald-300 dark:hover:border-emerald-700/50 transition-colors"><div className="text-[10px] text-emerald-600 dark:text-emerald-500/70 font-bold uppercase mb-1">{t.target}</div><div className="font-mono text-emerald-600 dark:text-emerald-400 text-xs font-semibold break-all">{analysis?.shortTerm?.target || '-'}</div></div>
+                                        <div className="p-2 bg-rose-50 dark:bg-rose-900/10 rounded-lg border border-rose-200 dark:border-rose-900/30 hover:border-rose-300 dark:hover:border-rose-700/50 transition-colors"><div className="text-[10px] text-rose-600 dark:text-rose-500/70 font-bold uppercase mb-1">{t.stop}</div><div className="font-mono text-rose-600 dark:text-rose-400 text-xs font-semibold break-all">{analysis?.shortTerm?.stop || '-'}</div></div>
+                                        </div>
+                                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-2 bg-slate-100 dark:bg-slate-800 p-3 rounded border-l-2 border-indigo-500">💡 {t.strategyNote}</div>
+                                    </div>
+                                    }
+                                </div>
+
+                                {/* Summary */}
+                                <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-900/40 dark:to-slate-900 border border-indigo-200 dark:border-indigo-500/30 rounded-2xl p-6 shadow-md transition-colors">
+                                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2"><Lightbulb className="w-5 h-5 text-yellow-500 dark:text-yellow-400" /> {t.summary}</h3>
+                                    {loadingDeep ? <div className="space-y-2"><div className="h-4 w-full bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div><div className="h-4 w-2/3 bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div></div> : 
+                                    <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-sm font-medium">{currentCoin.name} {analysis?.trend.status === '偏强' || analysis?.trend.status === 'Bullish' ? `${t.summaryBullish} ${formatPrice(analysis?.support || 0)}` : `${t.summaryBearish} ${formatPrice(analysis?.resistance || 0)}`}.</p>
+                                    }
+                                </div>
+                            </div>
+                            
+                            {/* On-Chain Merged */}
+                            <div className="mt-0">
+                                <OnChainView coin={currentCoin} t={t} formatPrice={formatPrice} />
+                            </div>
+                        </div>
+
+                        {/* RIGHT COLUMN: Indicators & Advice */}
+                        <div className="space-y-6">
+                            {/* Key Indicators */}
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-md flex flex-col transition-colors">
+                                <h3 className="text-lg font-bold text-indigo-500 dark:text-indigo-400 mb-4 flex items-center gap-2"><BarChart2 className="w-5 h-5" /> {t.keyIndicators}</h3>
+                                <div className="space-y-6">
+                                    <div className="space-y-3">
+                                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-600 uppercase tracking-widest pl-1">{t.groupTrend}</span>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        <IndicatorCard icon={<TrendingUp size={14} />} label={t.indTrend} metric={analysis?.trend} />
+                                        <IndicatorCard icon={<Activity size={14} />} label={t.indEma} metric={analysis?.ema} />
+                                        <IndicatorCard icon={<Layers size={14} />} label={t.indStructure} metric={analysis?.structure} />
+                                        <IndicatorCard icon={<Droplets size={14} />} label={t.indBollinger} metric={analysis?.bollinger} />
+                                    </div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-600 uppercase tracking-widest pl-1">{t.groupMomentum}</span>
+                                        <div className="grid grid-cols-1 gap-2">
+                                        <IndicatorCard icon={<Zap size={14} />} label={t.indMomentum} metric={analysis?.momentum} />
+                                        <IndicatorCard icon={<Target size={14} />} label={t.indRsi} metric={analysis?.rsiMetric} />
+                                        <IndicatorCard icon={<ArrowUpRight size={14} />} label={t.indMacd} metric={analysis?.macd} />
+                                        <IndicatorCard icon={<BarChart size={14} />} label={t.indVolume} metric={analysis?.volume} />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-600 uppercase tracking-widest pl-1">{t.groupOnChain}</span>
+                                        <div className="grid grid-cols-1 gap-2">
+                                        <IndicatorCard icon={<Coins size={14} />} label={t.indMvrv} metric={analysis?.mvrv} />
+                                        <IndicatorCard icon={<BrainCircuit size={14} />} label={t.indNupl} metric={analysis?.nupl} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Pro Advice */}
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-md transition-colors">
+                                <h3 className="text-lg font-bold text-indigo-500 dark:text-indigo-400 mb-3 flex items-center gap-2"><BrainCircuit className="w-5 h-5" /> {t.investmentAdvice}</h3>
+                                {loadingDeep ? <div className="space-y-2"><div className="h-4 w-full bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div><div className="h-4 w-2/3 bg-slate-200 dark:bg-slate-800/50 rounded animate-pulse"></div></div> :
+                                <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-300 list-disc pl-4 marker:text-indigo-500"><li>{analysis?.advice === 'Buy' ? t.adviceBuy : analysis?.advice === 'Sell' ? t.adviceSell : t.adviceHold}</li><li>{analysis?.momentum.status === 'Strong' || analysis?.momentum.status === '增强' ? t.momentumStrong : t.momentumWeak}</li></ul>
+                                }
+                            </div>
+                        </div>
                     </div>
-
-                    {/* MERGED ON-CHAIN SECTION */}
-                    <OnChainView coin={currentCoin} t={t} formatPrice={formatPrice} />
-
                   </div>
                 )}
                 
