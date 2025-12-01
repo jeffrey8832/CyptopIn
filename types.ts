@@ -22,6 +22,11 @@ export interface CoinDetail {
   low_24h: number;
   price_change_percentage_24h: number;
   ath: number;
+  ath_change_percentage: number;
+  ath_date: string;
+  atl: number;
+  atl_change_percentage: number;
+  atl_date: string;
   last_updated: string;
   circulating_supply?: number;
   total_supply?: number;
@@ -48,6 +53,10 @@ export interface NewsItem {
   author: string;
   created_at: number;
   imageurl?: string;
+  source_info?: {
+    name: string;
+    img?: string;
+  };
 }
 
 export interface FearGreedData {

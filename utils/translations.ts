@@ -1,3 +1,4 @@
+
 import { Language } from '../types';
 
 export const translations = {
@@ -79,6 +80,16 @@ export const translations = {
     theme: "Theme Mode",
     refresh: "Refresh Data",
     
+    // Historical
+    histPrice: "Historical Performance",
+    range24h: "24h Range",
+    range7d: "7d Range",
+    ath: "All-Time High",
+    atl: "All-Time Low",
+    since: "Date",
+    relatedNews: "Related News",
+    readMore: "Read More",
+
     // Profit Calculator
     calcTitle: "Profit Calculator",
     calcPrincipal: "Principal ($)",
@@ -166,8 +177,8 @@ export const translations = {
   },
   zh: {
     appTitle: "CoinBingo",
-    dashboard: "Dashboard", // Requested to stay English
-    navDashboard: "Dashboard", // Requested to stay English
+    dashboard: "Dashboard", 
+    navDashboard: "Dashboard", 
     analysis: "智能分析",
     tools: "工具箱",
     portfolio: "投资组合",
@@ -241,6 +252,16 @@ export const translations = {
     extremeGreed: "极度贪婪",
     theme: "显示模式",
     refresh: "刷新数据",
+
+    // Historical
+    histPrice: "历史价格表现",
+    range24h: "24h 价格范围",
+    range7d: "7d 价格范围",
+    ath: "历史最高 (ATH)",
+    atl: "历史最低 (ATL)",
+    since: "日期",
+    relatedNews: "相关新闻",
+    readMore: "阅读更多",
 
     // Profit Calculator
     calcTitle: "投资回报模拟器",

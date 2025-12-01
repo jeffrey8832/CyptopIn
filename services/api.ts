@@ -217,9 +217,29 @@ export const fetchEVMAssets = async (address: string): Promise<{symbol: string, 
   }
 };
 
-export const fetchNews = async (coinSymbol: string, lang: Language = 'en'): Promise<NewsItem[]> => {
-    return [];
-};
+export const fetchCoinNews = async (symbol: string): Promise<NewsItem[]> => {
+    try {
+        // Use CryptoCompare for coin-specific news
+        const url = `https://min-api.cryptocompare.com/data/v2/news/?lang=EN&categories=${symbol.toUpperCase()}`;
+        const response = await fetchWithRetry(url, 2, 1000, true);
+        
+        if (response && response.Data && Array.isArray(response.Data)) {
+            return response.Data.slice(0, 3).map((item: any) => ({
+                title: item.title,
+                url: item.url,
+                description: item.body,
+                author: item.source_info?.name || 'CryptoCompare',
+                created_at: item.published_on,
+                imageurl: item.imageurl,
+                source_info: item.source_info
+            }));
+        }
+        return [];
+    } catch (error) {
+        console.error("Fetch News Error", error);
+        return [];
+    }
+}
 
 export const fetchOnChainData = (coin: CoinDetail): OnChainData => {
   // Simulates On-Chain data based on available market metrics

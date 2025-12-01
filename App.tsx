@@ -1,14 +1,14 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { fetchGlobalData, fetchCoinData, fetchCoinHistory, findCoinId, fetchTrendingCoins, fetchFearAndGreed, fetchCoinsMarketData, fetchOnChainData, fetchEVMAssets } from './services/api';
-import { GlobalData, CoinDetail, ChartDataPoint, Language, FearGreedData, IndicatorMetric, TechnicalAnalysis, Category, OnChainData, PortfolioItem } from './types';
+import { fetchGlobalData, fetchCoinData, fetchCoinHistory, findCoinId, fetchTrendingCoins, fetchFearAndGreed, fetchCoinsMarketData, fetchOnChainData, fetchEVMAssets, fetchCoinNews } from './services/api';
+import { GlobalData, CoinDetail, ChartDataPoint, Language, FearGreedData, IndicatorMetric, TechnicalAnalysis, Category, OnChainData, PortfolioItem, NewsItem } from './types';
 import { analyzeToken } from './utils/indicators';
 import { translations } from './utils/translations';
 import PriceChart from './components/PriceChart';
 import { 
   Search, Activity, PieChart, ArrowUpRight, ArrowDownRight, AlertCircle, Loader2, 
   Coins, Zap, Target, BarChart2, BrainCircuit, Lightbulb, Copy, Check, Globe,
-  Settings, Gauge, Star, TrendingUp, Droplets, Layers, BarChart, Sun, Moon, RefreshCw, Calculator, ArrowRightLeft, Lock, Anchor, Wallet, Plus, Trash2, Edit2, X, Download, LayoutGrid, Gem, Hexagon
+  Settings, Gauge, Star, TrendingUp, Droplets, Layers, BarChart, Sun, Moon, RefreshCw, Calculator, ArrowRightLeft, Lock, Anchor, Wallet, Plus, Trash2, Edit2, X, Download, LayoutGrid, Gem, Hexagon, History, Newspaper, ExternalLink
 } from 'lucide-react';
 import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip } from 'recharts';
 
@@ -744,6 +744,8 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('bitcoin');
   const [currentCoin, setCurrentCoin] = useState<CoinDetail | null>(null);
   const [coinHistory, setCoinHistory] = useState<ChartDataPoint[]>([]);
+  const [coinNews, setCoinNews] = useState<NewsItem[]>([]);
+  const [priceRange7d, setPriceRange7d] = useState<{low: number, high: number} | null>(null);
   
   // Analysis - Now derived via useMemo to support instant translation switch
   const analysis = useMemo(() => {
@@ -894,7 +896,9 @@ const App: React.FC = () => {
     setLoadingBasic(true);
     setLoadingDeep(true); 
     setError(null);
-    // analysis set via useMemo based on coinHistory
+    setCoinNews([]); // Reset news
+    setCoinHistory([]); // Reset history
+    setPriceRange7d(null); // Reset range
 
     if (switchToAnalysis) {
       setViewMode('analysis');
@@ -906,9 +910,21 @@ const App: React.FC = () => {
       setCurrentCoin(coinData);
       setLoadingBasic(false); 
 
-      const historyData = await fetchCoinHistory(id);
-      setCoinHistory(historyData);
+      // Parallel fetch
+      const [historyData, newsData] = await Promise.all([
+         fetchCoinHistory(id),
+         fetchCoinNews(coinData.symbol)
+      ]);
       
+      setCoinHistory(historyData);
+      setCoinNews(newsData);
+      
+      // Calculate 7d Range
+      if (historyData.length > 0) {
+          const prices = historyData.map(p => p.price);
+          setPriceRange7d({ low: Math.min(...prices), high: Math.max(...prices) });
+      }
+
     } catch (err: any) {
       console.error(err);
       setError(t.errorGeneric);
@@ -926,6 +942,11 @@ const App: React.FC = () => {
     // analysis set via useMemo
     setViewMode('analysis');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    
+    // Reset state before fetch to avoid stale data
+    setCoinNews([]);
+    setCoinHistory([]);
+    setPriceRange7d(null);
 
     try {
       const resolvedId = await findCoinId(query);
@@ -933,8 +954,18 @@ const App: React.FC = () => {
       setCurrentCoin(coinData);
       setLoadingBasic(false); 
 
-      const historyData = await fetchCoinHistory(resolvedId);
+      const [historyData, newsData] = await Promise.all([
+         fetchCoinHistory(resolvedId),
+         fetchCoinNews(coinData.symbol)
+      ]);
+      
       setCoinHistory(historyData);
+      setCoinNews(newsData);
+
+      if (historyData.length > 0) {
+        const prices = historyData.map(p => p.price);
+        setPriceRange7d({ low: Math.min(...prices), high: Math.max(...prices) });
+      }
       
     } catch (err: any) {
       console.error(err);
@@ -970,6 +1001,14 @@ const App: React.FC = () => {
     if (val < 1) return `$${val.toFixed(4)}`;
     return `$${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
+
+  const formatDate = (dateStr: string) => {
+      try {
+          return new Date(dateStr).toLocaleDateString();
+      } catch {
+          return dateStr;
+      }
+  }
 
   const getFearGreedColor = (value: number) => {
     if (value >= 75) return 'text-emerald-500';
@@ -1029,21 +1068,6 @@ const App: React.FC = () => {
               </span>
             </div>
             
-            {/* Nav - Scrollable Tabs */}
-            <div className="absolute left-1/2 -translate-x-1/2 overflow-x-auto max-w-[200px] md:max-w-none scrollbar-hide">
-               <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
-                 {(['dashboard', 'analysis', 'portfolio', 'tools'] as ViewMode[]).map((mode) => (
-                    <button
-                      key={mode}
-                      onClick={() => setViewMode(mode)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${viewMode === mode ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                    >
-                      {mode === 'dashboard' ? t.navDashboard : mode === 'analysis' ? t.analysis : mode === 'portfolio' ? t.portfolio : t.tools}
-                    </button>
-                 ))}
-               </div>
-            </div>
-
             {/* Actions (Right) */}
             <div className="flex items-center gap-2">
                <button onClick={handleRefresh} className={`p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-all ${isRefreshing ? 'animate-spin text-indigo-500' : ''}`}>
@@ -1277,10 +1301,94 @@ const App: React.FC = () => {
                             <div className="mt-0">
                                 <OnChainView coin={currentCoin} t={t} formatPrice={formatPrice} />
                             </div>
+
+                            {/* RELATED NEWS */}
+                            {coinNews.length > 0 && (
+                                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-md transition-colors">
+                                    <h3 className="text-lg font-bold text-indigo-500 dark:text-indigo-400 mb-4 flex items-center gap-2"><Newspaper className="w-5 h-5" /> {t.relatedNews}</h3>
+                                    <div className="space-y-4">
+                                        {coinNews.map((news, idx) => (
+                                            <a key={idx} href={news.url} target="_blank" rel="noopener noreferrer" className="block group">
+                                                <div className="flex gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                                                    {news.imageurl && <img src={news.imageurl} alt="news" className="w-16 h-16 object-cover rounded-lg hidden sm:block" />}
+                                                    <div className="flex-1">
+                                                        <h4 className="font-bold text-slate-900 dark:text-white text-sm mb-1 group-hover:text-indigo-500 transition-colors line-clamp-2">{news.title}</h4>
+                                                        <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                                                            <span>{news.source_info?.name || news.author}</span>
+                                                            <span>•</span>
+                                                            <span>{new Date(news.created_at * 1000).toLocaleDateString()}</span>
+                                                        </div>
+                                                    </div>
+                                                    <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-500" />
+                                                </div>
+                                            </a>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* RIGHT COLUMN: Indicators & Advice */}
                         <div className="space-y-6">
+                            {/* HISTORICAL PRICE CARD */}
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-md transition-colors">
+                                <h3 className="text-lg font-bold text-indigo-500 dark:text-indigo-400 mb-4 flex items-center gap-2"><History className="w-5 h-5" /> {t.histPrice}</h3>
+                                <div className="space-y-4">
+                                    {/* 24h Range */}
+                                    <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                                        <div className="text-xs text-slate-500 mb-1 font-bold">{t.range24h}</div>
+                                        <div className="flex justify-between items-center text-sm font-mono text-slate-900 dark:text-white">
+                                            <span>{formatPrice(currentCoin.low_24h)}</span>
+                                            <div className="h-1 flex-1 mx-2 bg-slate-200 dark:bg-slate-700 rounded-full relative">
+                                                {/* Simple indicator dot based on current price relative position */}
+                                                <div className="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-indigo-500 rounded-full" 
+                                                    style={{ left: `${Math.min(Math.max((currentCoin.current_price - currentCoin.low_24h) / (currentCoin.high_24h - currentCoin.low_24h) * 100, 0), 100)}%` }}></div>
+                                            </div>
+                                            <span>{formatPrice(currentCoin.high_24h)}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* 7d Range */}
+                                    {priceRange7d && (
+                                        <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                                            <div className="text-xs text-slate-500 mb-1 font-bold">{t.range7d}</div>
+                                            <div className="flex justify-between items-center text-sm font-mono text-slate-900 dark:text-white">
+                                                <span>{formatPrice(priceRange7d.low)}</span>
+                                                <div className="h-1 flex-1 mx-2 bg-slate-200 dark:bg-slate-700 rounded-full relative">
+                                                     <div className="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-cyan-500 rounded-full" 
+                                                        style={{ left: `${Math.min(Math.max((currentCoin.current_price - priceRange7d.low) / (priceRange7d.high - priceRange7d.low) * 100, 0), 100)}%` }}></div>
+                                                </div>
+                                                <span>{formatPrice(priceRange7d.high)}</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* ATH */}
+                                    <div className="flex justify-between items-start py-2 border-b border-slate-100 dark:border-slate-800">
+                                        <div>
+                                            <div className="text-xs text-slate-500 font-bold">{t.ath}</div>
+                                            <div className="text-sm font-bold text-slate-900 dark:text-white">{formatPrice(currentCoin.ath)}</div>
+                                            <div className="text-[10px] text-slate-400">{formatDate(currentCoin.ath_date)}</div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-xs font-bold text-rose-500">{currentCoin.ath_change_percentage?.toFixed(2)}%</div>
+                                        </div>
+                                    </div>
+
+                                    {/* ATL */}
+                                    <div className="flex justify-between items-start py-2">
+                                        <div>
+                                            <div className="text-xs text-slate-500 font-bold">{t.atl}</div>
+                                            <div className="text-sm font-bold text-slate-900 dark:text-white">{formatPrice(currentCoin.atl)}</div>
+                                            <div className="text-[10px] text-slate-400">{formatDate(currentCoin.atl_date)}</div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-xs font-bold text-emerald-500">+{currentCoin.atl_change_percentage?.toFixed(2)}%</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Key Indicators */}
                             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-md flex flex-col transition-colors">
                                 <h3 className="text-lg font-bold text-indigo-500 dark:text-indigo-400 mb-4 flex items-center gap-2"><BarChart2 className="w-5 h-5" /> {t.keyIndicators}</h3>
